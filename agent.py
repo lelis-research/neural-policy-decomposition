@@ -136,9 +136,10 @@ def main():
     shortest_trajectory_length = np.inf
     best_trajectory = None
 
+    env = Game(game_width, game_width, problem)
     for _ in range(150):
         for _ in range(500):
-            env = Game(game_width, game_width, problem)
+            env.reset()
             trajectory = policy_agent.run(env, rnn, length_cap=shortest_trajectory_length, verbose=False)
 
             if len(trajectory.get_trajectory()) < shortest_trajectory_length:
@@ -152,11 +153,11 @@ def main():
         print()
 
     policy_agent._epsilon = 0.0
-    env = Game(game_width, game_width, problem)
+    env.reset()
     policy_agent.run(env, rnn, greedy=True, length_cap=None, verbose=True)
     rnn.print_weights()
 
-    env = Game(game_width, game_width, problem)
+    env.reset()
     policy_agent.run_with_relu_state(env, rnn)
 
     torch.save(rnn.state_dict(), 'binary/game-width' + str(game_width) + '-' + problem + '-relu-' + str(hidden_size) + '-model.pth')
