@@ -1,1 +1,8 @@
 envs
+outputs
+*.pth
+*.log
+binary
+*.out
+tmp.py
+__pycache__
