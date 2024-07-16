@@ -170,13 +170,13 @@ def train_relu():
 
 
 def train_ppo():
-    hidden_size = 4
-    game_width = 3
+    hidden_size = 6
+    game_width = 5
     method = "PPO"
     num_iterations = 170000
     num_worker = 4
     seed = 0
-    network = [6]
+    network = [hidden_size]
     vf = [200, 200, 200]
     learning_rate = 0.001
     ent_coef = 0.1
@@ -193,19 +193,21 @@ def train_ppo():
     # problem = "BL-TR"
     
     env = ComboGym(game_width, game_width, problem)
-    model = construct_PPO(env)
     
     policy_kwargs = dict(activation_fn=th.nn.ReLU,
                     net_arch=dict(pi=network, vf=vf))
-    model = construct_PPO(env, num_worker=num_worker, seed=0,
+    model = construct_PPO(env, num_worker=num_worker, seed=seed,
                         policy_kwargs=policy_kwargs, clip_range=clip_range,
                         learning_rate=learning_rate, gamma=gamma,
                         ent_coef=ent_coef, gae_lambda=gae_lambda,
                         reg_coef=reg_coef
                         )
 
-    model.learn(total_timesteps=num_iterations * num_worker)
-    model.save(f"{model_path}-{method}-{problem}_MODEL")
+    print("Start training ..")
+    model = model.learn(total_timesteps=num_iterations * num_worker)
+
+    print("Saving model .. ")
+    model.save(f"{model_path}{method}-{problem}_MODEL")
 
 
 def main():

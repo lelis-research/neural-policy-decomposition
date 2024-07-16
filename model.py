@@ -167,18 +167,12 @@ class CustomRelu(nn.Module):
     
 def construct_PPO(env, num_worker=4, seed=0, policy_kwargs=None, clip_range = 0.2, learning_rate=0.01,
                    gamma=0.99, ent_coef=0.1, gae_lambda=0.99, rollout_length=128,
-                   n_epochs=8, reg_coef=0.0):
+                   n_epochs=8):
     def vec():
         nonlocal env
         return copy.deepcopy(env)
     workers = make_vec_env(vec, n_envs=num_worker)
-    if reg_coef > 0.0:
-        return PPO("MlpPolicy", workers, policy_kwargs=policy_kwargs, gamma=gamma,
-                ent_coef=ent_coef, gae_lambda=gae_lambda, reg_coef=reg_coef,
-                learning_rate=learning_rate, n_steps=rollout_length, seed=seed, verbose=0,
-                clip_range=clip_range, n_epochs=n_epochs)
-    else:
-        return PPO("MlpPolicy", workers, policy_kwargs=policy_kwargs, gamma=gamma,
-                ent_coef=ent_coef, gae_lambda=gae_lambda,
-                learning_rate=learning_rate, n_steps=rollout_length, seed=seed, verbose=0,
-                clip_range=clip_range, n_epochs=n_epochs)
+    return PPO("MlpPolicy", workers, policy_kwargs=policy_kwargs, gamma=gamma,
+            ent_coef=ent_coef, gae_lambda=gae_lambda,
+            learning_rate=learning_rate, n_steps=rollout_length, seed=seed, verbose=0,
+            clip_range=clip_range, n_epochs=n_epochs)
