@@ -1,9 +1,12 @@
 import copy
 import random
 import torch
+import torch as th
 import numpy as np
 
 from combo import Game
+from combo_gym import ComboGym
+from model import construct_PPO
 from model import CustomRNN, CustomRelu 
 
 class Trajectory:
@@ -119,13 +122,16 @@ class PolicyGuidedAgent:
 
 
         return trajectory
+    
 
-def main():
+def train_relu():
     hidden_size = 4
     game_width = 3
-    # rnn = CustomRNN(27, 5, 3)
-    rnn = CustomRelu(game_width**2 * 2 + 9, hidden_size, 3)
-
+    method = "PPO"
+    
+    env = Game(game_width, game_width, problem)
+    model = CustomRelu(game_width**2 * 2 + 9, hidden_size, 3)
+    
     policy_agent = PolicyGuidedAgent()
 
     # problem = "TL-BR"
@@ -136,11 +142,11 @@ def main():
     shortest_trajectory_length = np.inf
     best_trajectory = None
 
-    env = Game(game_width, game_width, problem)
+    
     for _ in range(150):
         for _ in range(500):
             env.reset()
-            trajectory = policy_agent.run(env, rnn, length_cap=shortest_trajectory_length, verbose=False)
+            trajectory = policy_agent.run(env, model, length_cap=shortest_trajectory_length, verbose=False)
 
             if len(trajectory.get_trajectory()) < shortest_trajectory_length:
                 shortest_trajectory_length = len(trajectory.get_trajectory())
@@ -148,27 +154,63 @@ def main():
 
         print('Trajectory length: ', len(best_trajectory.get_trajectory()))
         for _ in range(10):
-            loss = rnn.train(best_trajectory)
+            loss = model.train(best_trajectory)
             print(loss)
         print()
 
     policy_agent._epsilon = 0.0
     env.reset()
-    policy_agent.run(env, rnn, greedy=True, length_cap=None, verbose=True)
-    rnn.print_weights()
+    policy_agent.run(env, model, greedy=True, length_cap=None, verbose=True)
+    model.print_weights()
 
     env.reset()
-    policy_agent.run_with_relu_state(env, rnn)
+    policy_agent.run_with_relu_state(env, model)
 
-    torch.save(rnn.state_dict(), 'binary/game-width' + str(game_width) + '-' + problem + '-relu-' + str(hidden_size) + '-model.pth')
+    torch.save(model.state_dict(), f'binary/game-width{game_width}-{problem}-{model}-{hidden_size}-model.pth')
+
+
+def train_ppo():
+    hidden_size = 4
+    game_width = 3
+    method = "PPO"
+    num_iterations = 170000
+    num_worker = 4
+    seed = 0
+    network = [6]
+    vf = [200, 200, 200]
+    learning_rate = 0.001
+    ent_coef = 0.1
+    clip_range = 0.1
+    reg_coef = 0.000
+    gamma = 1
+    gae_lambda = 0.95
+    reg_coef = 0.0002
+    model_path = "binary/"
+
+    problem = "TL-BR"
+    # problem = "TR-BL"
+    # problem = "BR-TL"
+    # problem = "BL-TR"
+    
+    env = ComboGym(game_width, game_width, problem)
+    model = construct_PPO(env)
+    
+    policy_kwargs = dict(activation_fn=th.nn.ReLU,
+                    net_arch=dict(pi=network, vf=vf))
+    model = construct_PPO(env, num_worker=num_worker, seed=0,
+                        policy_kwargs=policy_kwargs, clip_range=clip_range,
+                        learning_rate=learning_rate, gamma=gamma,
+                        ent_coef=ent_coef, gae_lambda=gae_lambda,
+                        reg_coef=reg_coef
+                        )
+
+    model.learn(total_timesteps=num_iterations * num_worker)
+    model.save(f"{model_path}-{method}-{problem}_MODEL")
+
+
+def main():
+    # train_relu()
+    train_ppo()
 
 if __name__ == "__main__":
     main()
-# for s, a in trajectory.get_trajectory():
-#     print(s, a)
-# print(trajectory)
-
-# rnn = CustomRNN(18, 256, 3)
-# for _ in range(10):
-#     loss = rnn.train(trajectory)
-#     print(loss)
