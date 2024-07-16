@@ -127,7 +127,9 @@ def main():
     num_models_per_task = 2
 
     # problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
-    problems = ["TL-BR"]
+    problems = ["MR-BL"]
+
+    print(f"Parameters: problems:{problems}, hidden_size:{hidden_size}, game_width:{game_width}, num_models_per_task:{num_models_per_task}")
 
     rnns = {problem:[CustomRelu(game_width**2 * 2 + 3**2, hidden_size, 3) \
                      for _ in range(num_models_per_task)] \
