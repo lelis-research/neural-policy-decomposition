@@ -171,9 +171,9 @@ def train_relu():
 
 def train_ppo():
     hidden_size = 6
-    game_width = 5
+    game_width = 3
     method = "PPO"
-    num_iterations = 170000
+    num_iterations = 80000
     num_worker = 4
     seed = 0
     network = [hidden_size]
@@ -199,8 +199,7 @@ def train_ppo():
     model = construct_PPO(env, num_worker=num_worker, seed=seed,
                         policy_kwargs=policy_kwargs, clip_range=clip_range,
                         learning_rate=learning_rate, gamma=gamma,
-                        ent_coef=ent_coef, gae_lambda=gae_lambda,
-                        reg_coef=reg_coef
+                        ent_coef=ent_coef, gae_lambda=gae_lambda
                         )
 
     print("Start training ..")
