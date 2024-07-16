@@ -181,8 +181,9 @@ def load_trajectories(problems, hidden_size, game_width, num_models_per_task):
     """
     trajectories = {problem:[] for problem in problems}
     for problem in problems:
+        env = Game(game_width, game_width, problem)
         for model_num in range(num_models_per_task):
-            env = Game(game_width, game_width, problem)
+            env.reset()
             agent = PolicyGuidedAgent()
             rnn = CustomRelu(game_width**2 * 2 + 3**2, hidden_size, 3)
             
@@ -255,7 +256,7 @@ def evaluate_all_masks_levin_loss():
 
         for problem in problems:
             for model_num in range(num_models_per_task):
-                print('Problem: ', problem)
+                print(f'Problem: {problem}, model: {model_num}')
                 rnn = CustomRelu(game_width**2 * 2 + 3**2, hidden_size, 3)
                 rnn.load_state_dict(torch.load(f'binary/game-width{game_width}-{problem}-relu-{hidden_size}-model-{model_num}.pth'))
                 
@@ -267,7 +268,7 @@ def evaluate_all_masks_levin_loss():
                     model_best_mask = rnn
                     problem_mask = problem
 
-                    print('Best Loss so far: ', best_loss, problem)
+                    print('Best Loss so far: ', best_loss, problem, model_num)
 
         # we recompute the Levin loss after the automaton is selected so that we can use 
         # the loss on all trajectories as the stopping condition for selecting automata
@@ -289,7 +290,7 @@ def evaluate_all_masks_levin_loss():
         print(selected_masks[i])
 
 # TODO: multiple models for one task not implemented. Might need this
-def hill_climbing(masks, selected_models_of_masks, model, problem, trajectories, number_actions, number_iterations, number_restarts, hidden_size):
+def hill_climbing(masks, selected_models_of_masks, model, problem, model_num, trajectories, number_actions, number_iterations, number_restarts, hidden_size):
     """
     Performs Hill Climbing in the mask space for a given model. Note that when computing the loss of a mask (option), 
     we pass the name of the problem in which the mask is used. That way, we do not evaluate an option on the problem in 
@@ -308,8 +309,7 @@ def hill_climbing(masks, selected_models_of_masks, model, problem, trajectories,
         value = random.choices(values, k=hidden_size)
         current_mask = torch.tensor(value, dtype=torch.int8).view(1, -1)
 
-        best_value = loss.compute_loss(masks + [current_mask], selected_models_of_masks + [model], problem, trajectories, number_actions, number_iterations)
-        # print('Initial Mask: ', current_mask, best_value)
+        best_value = loss.compute_loss(masks + [current_mask], selected_models_of_masks + [model], problem, model_num, trajectories, number_actions, number_iterations)
 
         while True:
             made_progress = False
@@ -318,7 +318,7 @@ def hill_climbing(masks, selected_models_of_masks, model, problem, trajectories,
                 for v in values:
    
                     modifiable_current_mask[0][i] = v
-                    eval_value = loss.compute_loss(masks + [modifiable_current_mask], selected_models_of_masks + [model], problem, trajectories, number_actions, number_iterations)
+                    eval_value = loss.compute_loss(masks + [modifiable_current_mask], selected_models_of_masks + [model], problem, model_num, trajectories, number_actions, number_iterations)
 
                     if best_mask is None or eval_value < best_value:
                         best_value = eval_value
@@ -372,17 +372,18 @@ def hill_climbing_mask_space_training_data_levin_loss():
         problem_mask = None
 
         for problem in problems:
-            print('Problem: ', problem)
-            rnn = CustomRelu(game_width**2 * 2 + 9, hidden_size, 3)
-            rnn.load_state_dict(torch.load('binary/game-width' + str(game_width) + '-' + problem + '-relu-' + str(hidden_size) + '-model.pth'))
+            for model_num in range(num_models_per_task):
+                print(f'Problem: {problem}, model: {model_num}')
+                rnn = CustomRelu(game_width**2 * 2 + 9, hidden_size, 3)
+                rnn.load_state_dict(torch.load(f'binary/game-width{game_width}-{problem}-relu-{hidden_size}-model-{model_num}.pth'))
 
-            mask, levin_loss = hill_climbing(selected_options, selected_models_of_masks, rnn, problem, trajectories, number_actions, number_iterations, number_restarts, hidden_size)
+                mask, levin_loss = hill_climbing(selected_options, selected_models_of_masks, rnn, problem, model_num, trajectories, number_actions, number_iterations, number_restarts, hidden_size)
 
-            if best_loss is None or levin_loss < best_loss:
-                best_loss = levin_loss
-                best_mask = mask
-                model_best_mask = rnn
-                problem_mask = problem
+                if best_loss is None or levin_loss < best_loss:
+                    best_loss = levin_loss
+                    best_mask = mask
+                    model_best_mask = rnn
+                    problem_mask = problem
         print()
 
         # we recompute the Levin loss after the automaton is selected so that we can use 
