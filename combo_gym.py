@@ -20,6 +20,7 @@ class ComboGym(gym.Env):
         self._game._matrix_unit = np.zeros((self._rows, self._columns))
         self._game._matrix_structure = np.zeros((self._rows, self._columns))
         self._game._matrix_goal = np.zeros((self._rows, self._columns))
+        self._game._state = []
         self._game._set_initial_goal(self._problem)
         self.n_steps = 0
         return self._get_obs(), ""
