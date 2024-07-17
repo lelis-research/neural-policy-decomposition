@@ -1,6 +1,7 @@
 import gymnasium as gym
 import numpy as np
 from combo import Game
+from gymnasium.envs.registration import register
 
 class ComboGym(gym.Env):
     def __init__(self, rows=3, columns=3, problem="TL-BR"):
@@ -16,13 +17,13 @@ class ComboGym(gym.Env):
     def _get_obs(self):
         return self._game.get_observation()
     
-    def reset(self,seed=0):
+    def reset(self,seed=0, **kwargs):
         self._game._matrix_unit = np.zeros((self._rows, self._columns))
         self._game._matrix_structure = np.zeros((self._rows, self._columns))
         self._game._matrix_goal = np.zeros((self._rows, self._columns))
         self._game._set_initial_goal(self._problem)
         self.n_steps = 0
-        return self._get_obs(), ""
+        return self._get_obs(), {}
     
     def step(self, action:int):
         trunctuated = False
@@ -37,9 +38,13 @@ class ComboGym(gym.Env):
         info = self._game.__repr__()
 
         #Max steps each episode, will probably remove it
-        if self.n_steps == 100:
+        if self.n_steps == 500:
             trunctuated = True
 
         
         return self._get_obs(), reward, terminated, trunctuated, {}
     
+register(
+     id="ComboGridWorld-v0",
+     entry_point=ComboGym
+)
