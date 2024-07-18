@@ -129,49 +129,50 @@ class LevinLossMLP:
         It shows how different masks are used in a given sequence. In the example above, option o0
         is used in the sequence 110, while option o3 is used in some of the occurrences of 102. 
         """
-        for problem, trajectory in trajectories.items():  
-            print(problem)
+        for problem, task_trajectories in trajectories.items():
+            for model_i, trajectory in enumerate(task_trajectories):  
+                print(problem)  
 
-            mask_usage = {}
-            t = trajectory.get_trajectory()
-            M = np.arange(len(t) + 1)
+                mask_usage = {}
+                t = trajectory.get_trajectory()
+                M = np.arange(len(t) + 1)
 
-            for j in range(len(t) + 1):
-                if j > 0:
-                    if M[j - 1] + 1 < M[j]:
-                        M[j] = M[j - 1] + 1
+                for j in range(len(t) + 1):
+                    if j > 0:
+                        if M[j - 1] + 1 < M[j]:
+                            M[j] = M[j - 1] + 1
 
-                if j < len(t):
-                    for i in range(len(masks)):
+                    if j < len(t):
+                        for i in range(len(masks)):
 
-                        if masks_problems[i] == problem:
-                            continue
+                            if masks_problems[i] == problem:
+                                continue
 
-                        actions = self._run(copy.deepcopy(t[j][0]), masks[i], models[i], number_steps)
+                            actions = self._run(copy.deepcopy(t[j][0]), masks[i], models[i], number_steps)
 
-                        if self.is_mlp_applicable(t, actions, j):
-                            M[j + len(actions)] = min(M[j + len(actions)], M[j] + 1)
+                            if self.is_mlp_applicable(t, actions, j):
+                                M[j + len(actions)] = min(M[j + len(actions)], M[j] + 1)
 
-                            mask_name = 'o' + str(i)
-                            if mask_name not in mask_usage:
-                                mask_usage[mask_name] = []
+                                mask_name = 'o' + str(i)
+                                if mask_name not in mask_usage:
+                                    mask_usage[mask_name] = []
 
-                            usage = ['-' for _ in range(len(t))]
-                            for k in range(j, j+len(actions)):
-                                usage[k] = str(i)
-                            mask_usage[mask_name].append(usage)
+                                usage = ['-' for _ in range(len(t))]
+                                for k in range(j, j+len(actions)):
+                                    usage[k] = str(i)
+                                mask_usage[mask_name].append(usage)
 
-            for mask, matrix in mask_usage.items():
-                print('Mask: ', mask)
-                for _, action in t:
-                    print(action, end="")
-                print()
-                for use in matrix:
-                    for v in use:
-                        print(v, end='')
+                for mask, matrix in mask_usage.items():
+                    print('Mask: ', mask)
+                    for _, action in t:
+                        print(action, end="")
                     print()
-                print()
-            print('Number of Decisions: ',  M[len(t)])
+                    for use in matrix:
+                        for v in use:
+                            print(v, end='')
+                        print()
+                    print()
+                print('Number of Decisions: ',  M[len(t)])
 
 def load_trajectories(problems, hidden_size, game_width, num_models_per_task):
     """
@@ -215,7 +216,7 @@ def evaluate_all_masks_for_model(masks, selected_models_of_masks, model, problem
         if best_mask is None or value < best_value:
             best_value = value
             best_mask = copy.deepcopy(current_mask)
-            print(best_mask, best_value)
+            print(f"Best Mask so far: {best_mask.numpy()}, Best Leving Loss: {best_value}")
                             
     return best_mask, best_value
 
@@ -256,7 +257,7 @@ def evaluate_all_masks_levin_loss():
 
         for problem in problems:
             for model_num in range(num_models_per_task):
-                print(f'Problem: {problem}, model: {model_num}')
+                print(f'Evaluating Problem: {problem}, model: {model_num}')
                 rnn = CustomRelu(game_width**2 * 2 + 3**2, hidden_size, 3)
                 rnn.load_state_dict(torch.load(f'binary/game-width{game_width}-{problem}-relu-{hidden_size}-model-{model_num}.pth'))
                 
@@ -373,7 +374,7 @@ def hill_climbing_mask_space_training_data_levin_loss():
 
         for problem in problems:
             for model_num in range(num_models_per_task):
-                print(f'Problem: {problem}, model: {model_num}')
+                print(f'Evaluating Problem: {problem}, model: {model_num}')
                 rnn = CustomRelu(game_width**2 * 2 + 9, hidden_size, 3)
                 rnn.load_state_dict(torch.load(f'binary/game-width{game_width}-{problem}-relu-{hidden_size}-model-{model_num}.pth'))
 
