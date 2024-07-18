@@ -1,5 +1,6 @@
 envs
 outputs
+experiments
 *.pth
 *.log
 binary

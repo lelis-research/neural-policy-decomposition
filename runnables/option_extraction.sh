@@ -6,8 +6,8 @@
 #SBATCH --account=def-lelis
 #SBATCH --array=0-9
 
-source ../envs/venv/bin/activate # Assuming we have all our environments in  `../envs/`
+source envs/venv/bin/activate # Assuming we have all our environments in  `../envs/`
 
-python ../masked_sub_policies_levin_loss.py
+python masked_sub_policies_levin_loss.py
 
 
