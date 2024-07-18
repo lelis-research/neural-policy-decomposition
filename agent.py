@@ -173,18 +173,16 @@ def train_ppo():
     hidden_size = 6
     game_width = 3
     method = "PPO"
-    num_iterations = 80000
-    num_worker = 4
+    num_iterations = 500000
+    num_worker = 1
     seed = 0
     network = [hidden_size]
-    vf = [200, 200, 200]
+    vf = [64, 64]
     learning_rate = 0.001
     ent_coef = 0.1
     clip_range = 0.1
-    reg_coef = 0.000
     gamma = 1
     gae_lambda = 0.95
-    reg_coef = 0.0002
     model_path = "binary/"
 
     problem = "TL-BR"
@@ -206,7 +204,7 @@ def train_ppo():
     model = model.learn(total_timesteps=num_iterations * num_worker)
 
     print("Saving model .. ")
-    model.save(f"{model_path}{method}-{problem}_MODEL")
+    model.save(f"{model_path}{method}-{problem}-hidden{hidden_size}-game-width{game_width}-critic{",".join(vf)}_MODEL")
 
 
 def main():
