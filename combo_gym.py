@@ -16,14 +16,10 @@ class ComboGym(gym.Env):
     def _get_obs(self):
         return self._game.get_observation()
     
-    def reset(self,seed=0):
-        self._game._matrix_unit = np.zeros((self._rows, self._columns))
-        self._game._matrix_structure = np.zeros((self._rows, self._columns))
-        self._game._matrix_goal = np.zeros((self._rows, self._columns))
-        self._game._state = []
-        self._game._set_initial_goal(self._problem)
+    def reset(self,seed=0, **kwargs):
+        self._game.reset()
         self.n_steps = 0
-        return self._get_obs(), ""
+        return self._get_obs(), {}
     
     def step(self, action:int):
         trunctuated = False
@@ -38,7 +34,7 @@ class ComboGym(gym.Env):
         info = self._game.__repr__()
 
         #Max steps each episode, will probably remove it
-        if self.n_steps == 100:
+        if self.n_steps == 500:
             trunctuated = True
 
         
