@@ -173,11 +173,11 @@ def train_ppo():
     hidden_size = 6
     game_width = 3
     method = "PPO"
-    num_iterations = 80000
-    num_worker = 4
+    num_iterations = 500000
+    num_worker = 1
     seed = 0
     network = [hidden_size]
-    vf = [200, 200, 200]
+    vf = [64, 64]
     learning_rate = 0.001
     ent_coef = 0.1
     clip_range = 0.1
@@ -203,10 +203,19 @@ def train_ppo():
                         )
 
     print("Start training ..")
-    model = model.learn(total_timesteps=num_iterations * num_worker)
+    model = model.learn(total_timesteps=num_iterations * num_worker, progress_bar=True)
 
     print("Saving model .. ")
     model.save(f"{model_path}{method}-{problem}_MODEL")
+
+    obs,_ = env.reset()
+
+    for i in range(15):
+        action = model.predict(obs)
+        obs,_,done,_,_ =env.step(int(action[0]))
+        print(action)
+        print(env._game._state)
+        print(env._game.__repr__())
 
 
 def main():

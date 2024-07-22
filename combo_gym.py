@@ -34,7 +34,7 @@ class ComboGym(gym.Env):
         #info about each step, Not being used 
         info = self._game.__repr__()
 
-        #Max steps each episode, will probably remove it
+        # Max steps each episode, will probably remove it
         if self.n_steps == 500:
             trunctuated = True
         
