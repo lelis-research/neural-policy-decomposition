@@ -55,7 +55,6 @@ class Game:
         
         goal = self.problem.goal
         
-        self._matrix_unit[self._x][self._y] = 1
         self._matrix_goal[goal[0]][goal[1]] = 1
 
         # state of current action sequence
@@ -78,6 +77,7 @@ class Game:
         self._matrix_unit = np.zeros((self._rows, self._columns))
         initial = self.problem.initial
         self._x, self._y = initial
+        self._matrix_unit[self._x][self._y] = 1
         self._state = []
         gc.collect()
 

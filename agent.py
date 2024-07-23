@@ -201,10 +201,19 @@ def train_ppo():
                         )
 
     print("Start training ..")
-    model = model.learn(total_timesteps=num_iterations * num_worker)
+    model = model.learn(total_timesteps=num_iterations * num_worker, progress_bar=True)
 
     print("Saving model .. ")
     model.save(f"{model_path}{method}-{problem}-hidden{hidden_size}-game-width{game_width}-critic{",".join(vf)}_MODEL")
+
+    obs,_ = env.reset()
+
+    for i in range(15):
+        action = model.predict(obs)
+        obs,_,done,_,_ =env.step(int(action[0]))
+        print(action)
+        print(env._game._state)
+        print(env._game.__repr__())
 
 
 def main():
