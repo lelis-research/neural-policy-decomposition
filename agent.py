@@ -122,12 +122,12 @@ class PolicyGuidedAgent:
         return trajectory
 
 def main():
-    hidden_size = 6
+    hidden_size = 64
     game_width = 5
     num_models_per_task = 2
 
-    # problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
-    problems = ["MR-BL"]
+    # problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR", "ML-BR", "ML-TR", "MR-BL", "MR-TL"]
+    problems = ["MR-TL"]
 
     print(f"Parameters: problems:{problems}, hidden_size:{hidden_size}, game_width:{game_width}, num_models_per_task:{num_models_per_task}")
 

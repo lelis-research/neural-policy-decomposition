@@ -4,7 +4,7 @@
 #SBATCH --time=0-12:00      # time (DD-HH:MM)
 #SBATCH --output=%N-%j.out  # %N for node name, %j for jobID
 #SBATCH --account=def-lelis
-#SBATCH --array=7-7
+#SBATCH --array=0-0
 
 source envs/venv/bin/activate # Assuming we have all our environments in  `../envs/`
 

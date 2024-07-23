@@ -234,7 +234,14 @@ def evaluate_all_masks_levin_loss():
     game_width = 5
     number_actions = 3
     num_models_per_task = 2
-    problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
+    problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR", "ML-BR", "ML-TR", "MR-BL", "MR-TL"]
+
+    print(f"parameters: {dict(hidden_size=hidden_size, 
+                              number_iterations=number_iterations, 
+                              game_width=game_width, 
+                              number_actions=number_actions, 
+                              num_models_per_task=num_models_per_task, 
+                              problems=problems)}")
 
     trajectories = load_trajectories(problems, hidden_size, game_width, num_models_per_task)
 
@@ -344,13 +351,20 @@ def hill_climbing_mask_space_training_data_levin_loss():
     This function performs hill climbing in the space of masks of a ReLU neural network
     to minimize the Levin loss of a given data set. 
     """
-    hidden_size = 32
+    hidden_size = 6
     number_iterations = 3
     game_width = 5
     number_restarts = 100
     number_actions = 3
     num_models_per_task = 2
-    problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
+    problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR", "ML-BR", "ML-TR", "MR-BL", "MR-TL"]
+
+    print(f"parameters: {dict(hidden_size=hidden_size, 
+                              number_iterations=number_iterations, 
+                              game_width=game_width, 
+                              number_actions=number_actions, 
+                              num_models_per_task=num_models_per_task, 
+                              problems=problems)}")
 
     trajectories = load_trajectories(problems, hidden_size, game_width, num_models_per_task)
 
