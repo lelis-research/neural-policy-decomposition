@@ -22,11 +22,10 @@ class Args:
 
     # Algorithm specific arguments
     # env_id: str = "BreakoutNoFrameskip-v4"
-    env_id: str = "CartPole-v0"
-    # env_id: str = "LunarLander-v2"
-    # env_id: str = "MountainCar-v0"
+    env_id: str = "ComboGrid-v0"
+
     """the id of the environment"""
-    total_timesteps: int = 10000000
+    total_timesteps: int = 50000
     """total timesteps of the experiments"""
     learning_rate: float = 2.5e-4
     """the learning rate of the optimizer"""
@@ -60,6 +59,10 @@ class Args:
     """the target KL divergence threshold"""
     rnn_type: str = "lstm"
     """RNN model type"""
+    weight_decay: float = 0
+    "weight decay for l2 regularization"
+    hidden_size: int = 128
+    "size of RNN hidden states"
 
     # to be filled in runtime
     batch_size: int = 0

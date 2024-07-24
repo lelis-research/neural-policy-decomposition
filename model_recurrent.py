@@ -11,7 +11,7 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     return layer
 
 class LstmAgent(nn.Module):
-    def __init__(self, envs):
+    def __init__(self, envs, h_size=64):
         super().__init__()
 
         self.network = nn.Sequential(
@@ -21,7 +21,7 @@ class LstmAgent(nn.Module):
             nn.Tanh(),
             layer_init(nn.Linear(64, 512)),
         )
-        self.lstm = nn.LSTM(512, 128)
+        self.lstm = nn.LSTM(512, h_size)
         for name, param in self.lstm.named_parameters():
             if "bias" in name:
                 nn.init.constant_(param, 0)
@@ -30,7 +30,7 @@ class LstmAgent(nn.Module):
         # self.actor = layer_init(nn.Linear(128 + envs.single_observation_space.shape[0], envs.single_action_space.n), std=0.01)
         # self.critic = layer_init(nn.Linear(128 + envs.single_observation_space.shape[0], 1), std=1)
         self.actor = nn.Sequential(
-            layer_init(nn.Linear(128 + envs.single_observation_space.shape[0], 64)),
+            layer_init(nn.Linear(h_size + envs.single_observation_space.shape[0], 64)),
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
             nn.Tanh(),
@@ -38,7 +38,7 @@ class LstmAgent(nn.Module):
         )
 
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(128 + envs.single_observation_space.shape[0], 64)),
+            layer_init(nn.Linear(h_size + envs.single_observation_space.shape[0], 64)),
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
             nn.Tanh(),
@@ -81,7 +81,7 @@ class LstmAgent(nn.Module):
         return action, probs.log_prob(action), probs.entropy(), self.critic(concatenated), lstm_state
 
 class GruAgent(nn.Module):
-    def __init__(self, envs):
+    def __init__(self, envs, h_size=64):
         super().__init__()
 
         self.network = nn.Sequential(
@@ -91,7 +91,7 @@ class GruAgent(nn.Module):
             nn.Tanh(),
             layer_init(nn.Linear(64, 512)),
         )
-        self.gru = nn.GRU(512, 128, 1)
+        self.gru = nn.GRU(512, h_size, 1)
 
         for name, param in self.gru.named_parameters():
             if "bias" in name:
@@ -101,7 +101,7 @@ class GruAgent(nn.Module):
         # self.actor = layer_init(nn.Linear(128 + envs.single_observation_space.shape[0], envs.single_action_space.n), std=0.01)
         # self.critic = layer_init(nn.Linear(128 + envs.single_observation_space.shape[0], 1), std=1)
         self.actor = nn.Sequential(
-            layer_init(nn.Linear(128 + envs.single_observation_space.shape[0], 64)),
+            layer_init(nn.Linear(h_size + envs.single_observation_space.shape[0], 64)),
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
             nn.Tanh(),
@@ -109,7 +109,7 @@ class GruAgent(nn.Module):
         )
 
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(128 + envs.single_observation_space.shape[0], 64)),
+            layer_init(nn.Linear(h_size + envs.single_observation_space.shape[0], 64)),
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
             nn.Tanh(),

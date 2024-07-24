@@ -43,6 +43,10 @@ def make_env(env_id, idx, capture_video, run_name):
 
     return thunk
 
+def _l1_norm(self, lambda_l1=0.01):
+    l1_norm = sum(p.abs().sum() for p in self.parameters())
+    return lambda_l1 * l1_norm
+
 if __name__ == "__main__":
     args = tyro.cli(Args)
     args.batch_size = int(args.num_envs * args.num_steps)
@@ -61,7 +65,7 @@ if __name__ == "__main__":
             monitor_gym=True,
             save_code=True,
         )
-    writer = SummaryWriter(f"runs/{run_name}")
+    writer = SummaryWriter(f"../runs/{run_name}")
     writer.add_text(
         "hyperparameters",
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
@@ -82,13 +86,13 @@ if __name__ == "__main__":
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     if args.rnn_type == 'lstm':
-        agent = LstmAgent(envs).to(device)
+        agent = LstmAgent(envs, args.hidden_size).to(device)
     elif args.rnn_type == 'gru':
-        agent = GruAgent(envs).to(device)
+        agent = GruAgent(envs, args.hidden_size).to(device)
     else:
         print("Unknown type of model. Please choose between either LSTM or GRU.")
         exit()
-    optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
+    optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5, weight_decay=args.weight_decay)
 
     # ALGO Logic: Storage setup
     obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
@@ -271,4 +275,4 @@ if __name__ == "__main__":
 
     envs.close()
     writer.close()
-
+    torch.save(agent.state_dict(), '../models/test.pt')
