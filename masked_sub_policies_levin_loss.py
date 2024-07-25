@@ -236,7 +236,7 @@ def evaluate_all_masks_levin_loss():
     num_models_per_task = 2
     problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR", "ML-BR", "ML-TR", "MR-BL", "MR-TL"]
 
-    print(f"parameters: {dict(hidden_size=hidden_size, 
+    print(f"Parameters: {dict(hidden_size=hidden_size, 
                               number_iterations=number_iterations, 
                               game_width=game_width, 
                               number_actions=number_actions, 
@@ -297,7 +297,6 @@ def evaluate_all_masks_levin_loss():
     for i in range(len(selected_masks)):
         print(selected_masks[i])
 
-# TODO: multiple models for one task not implemented. Might need this
 def hill_climbing(masks, selected_models_of_masks, model, problem, model_num, trajectories, number_actions, number_iterations, number_restarts, hidden_size):
     """
     Performs Hill Climbing in the mask space for a given model. Note that when computing the loss of a mask (option), 
@@ -359,7 +358,7 @@ def hill_climbing_mask_space_training_data_levin_loss():
     num_models_per_task = 2
     problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR", "ML-BR", "ML-TR", "MR-BL", "MR-TL"]
 
-    print(f"parameters: {dict(hidden_size=hidden_size, 
+    print(f"Parameters: {dict(hidden_size=hidden_size, 
                               number_iterations=number_iterations, 
                               game_width=game_width, 
                               number_actions=number_actions, 

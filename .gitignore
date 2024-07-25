@@ -1,10 +1,10 @@
 envs
-outputs
 experiments
 *.pth
 *.log
 binary
 *.out
 tmp.py
-__pycache__
 runnables
+__pycache__/*
+outputs
