@@ -13,6 +13,7 @@ import tyro
 from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
 from combo_gym import ComboGym
+from utils import timing_decorator
 
 @dataclass
 class Args:
@@ -36,7 +37,7 @@ class Args:
     # Algorithm specific arguments
     env_id: str = "CartPole-v1"
     """the id of the environment"""
-    total_timesteps: int = 1000000
+    total_timesteps: int = 1_000_000
     """total timesteps of the experiments"""
     learning_rate: float = 2.5e-4
     """the learning rate of the optimizer"""
@@ -78,9 +79,9 @@ class Args:
     """the number of iterations (computed in runtime)"""
 
 
-def make_env():
+def make_env(*args, **kwargs):
     def thunk():
-        env = ComboGym()
+        env = ComboGym(*args, **kwargs)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
@@ -119,7 +120,8 @@ class Agent(nn.Module):
         return action, probs.log_prob(action), probs.entropy(), self.critic(x)
 
 
-if __name__ == "__main__":
+@timing_decorator
+def main():
     args = tyro.cli(Args)
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
@@ -152,8 +154,9 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
+    problem = "BR-TL"
     envs = gym.vector.SyncVectorEnv(
-        [make_env() for _ in range(args.num_envs)],
+        [make_env(problem=problem) for _ in range(args.num_envs)],
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
@@ -303,3 +306,8 @@ if __name__ == "__main__":
 
     envs.close()
     writer.close()
+    torch.save(agent.state_dict(), 'binary/test.pt')
+
+
+if __name__ == "__main__":
+    main()
