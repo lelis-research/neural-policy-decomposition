@@ -154,10 +154,11 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    problem = "BR-TL"
+    game_width = 5
+    problem = "TL-BR"
     envs = gym.vector.SyncVectorEnv(
-        [make_env(problem=problem) for _ in range(args.num_envs)],
-    )
+        [make_env(rows=game_width, columns=game_width, problem=problem) for _ in range(args.num_envs)],
+    )    
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     agent = Agent(envs).to(device)
@@ -306,7 +307,7 @@ def main():
 
     envs.close()
     writer.close()
-    torch.save(agent.state_dict(), 'binary/test.pt')
+    torch.save(agent.state_dict(), f'binary/PPO-{problem}-game-width{game_width}-hidden{6}_MODEL.pt')
 
 
 if __name__ == "__main__":

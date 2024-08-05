@@ -43,6 +43,12 @@ class ComboGym(gym.Env):
     def is_over(self):
         return self._game.is_over()
     
+    def get_observation_space(self):
+        return self._rows * self._columns * 2 + 9
+    
+    def get_action_space(self):
+        return 3
+    
 register(
      id="ComboGridWorld-v0",
      entry_point=ComboGym
