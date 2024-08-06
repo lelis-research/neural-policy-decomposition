@@ -16,6 +16,12 @@ class Trajectory:
     
     def get_trajectory(self):
         return self._sequence
+    
+    def get_action_sequence(self):
+        return [pair[1] for pair in self._sequence]
+    
+    def get_state_sequence(self):
+        return [pair[0] for pair in self._sequence]
 
 class RandomAgent:
     def run(self, env):

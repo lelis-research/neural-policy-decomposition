@@ -174,6 +174,30 @@ class LevinLossMLP:
                         print()
                     print()
                 print('Number of Decisions: ',  M[len(t)])
+    
+    def evaluate_on_each_cell(self, test_models, masks, problem_test, game_width, label=""):
+        """
+        This test is to see for each cell, options will give which sequence of actions
+        """
+        env = Game(game_width, game_width, problem_test)
+        for model, idx, mask in zip(test_models, range(len(test_models)), masks):
+            print("\n",label, idx, "Option:", mask.cpu().numpy())
+            options = {}
+            for i in range(game_width):
+                for j in range(game_width):    
+                    if (i,j) == env.problem.goal:
+                        continue
+                    env.reset((i,j))
+                    agent = PolicyGuidedAgent()
+                    trajectory = agent.run(env, model, greedy=True, length_cap=2)
+
+                    actions = trajectory.get_action_sequence()
+                    options[(i,j)] = actions
+            state = trajectory.get_state_sequence()[0]
+            print(state.represent_options(options))
+
+
+        print("#### ### ###\n")
 
 def load_trajectories(problems, hidden_size, game_width, num_models_per_task):
     """
@@ -285,7 +309,9 @@ def evaluate_all_masks_levin_loss():
         print("Levin loss of the current set: ", best_loss)
 
     # remove the last automaton added
-    selected_masks = selected_masks[0:len(selected_masks) - 1]
+    num_options = len(selected_masks)
+    selected_masks = selected_masks[0:num_options - 1]
+    selected_models_of_masks = selected_models_of_masks[:num_options - 1]
 
     loss = LevinLossMLP()
     loss.print_output_subpolicy_trajectory(selected_models_of_masks, selected_masks, selected_options_problem, trajectories, number_iterations)
@@ -293,6 +319,11 @@ def evaluate_all_masks_levin_loss():
     # printing selected options
     for i in range(len(selected_masks)):
         print(selected_masks[i])
+
+    print("Testing on each grid cell")
+    for problem in problems:
+        print("Testing...", problem)
+        loss.evaluate_on_each_cell(selected_models_of_masks, selected_masks, problem, game_width)
 
 def hill_climbing(masks, selected_models_of_masks, model, problem, model_num, trajectories, number_actions, number_iterations, number_restarts, hidden_size):
     """
@@ -358,7 +389,6 @@ def hill_climbing_mask_space_training_data_levin_loss():
 
     print(f"Parameters: {dict(hidden_size=hidden_size, number_iterations=number_iterations, game_width=game_width, number_actions=number_actions, num_models_per_task=num_models_per_task, problems=problems)}")
 
-
     trajectories = load_trajectories(problems, hidden_size, game_width, num_models_per_task)
 
     previous_loss = None
@@ -399,7 +429,7 @@ def hill_climbing_mask_space_training_data_levin_loss():
         selected_options.append(best_mask)
         selected_models_of_masks.append(model_best_mask)
         selected_options_problem.append(problem_mask)
-        best_loss = loss.compute_loss(selected_options, selected_models_of_masks, "", trajectories, number_actions, number_iterations)
+        best_loss = loss.compute_loss(selected_options, selected_models_of_masks, "", -1, trajectories, number_actions, number_iterations)
 
         print("Levin loss of the current set: ", best_loss)
 
@@ -410,8 +440,15 @@ def hill_climbing_mask_space_training_data_levin_loss():
     loss.print_output_subpolicy_trajectory(selected_models_of_masks, selected_options, selected_options_problem, trajectories, number_iterations)
 
     # printing selected options
+    print("Selected options:")
     for i in range(len(selected_options)):
         print(selected_options[i])
+
+    print("Testing on each grid cell")
+    for problem in problems:
+        print("Testing...", problem)
+        loss.evaluate_on_each_cell(selected_models_of_masks, selected_options, problem, game_width)
+
 
 def main():
     evaluate_all_masks_levin_loss()
