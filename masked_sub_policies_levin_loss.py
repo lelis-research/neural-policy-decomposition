@@ -6,6 +6,7 @@ import torch
 from agent import PolicyGuidedAgent
 from combo import Game
 from model import CustomRelu
+from utils import timing_decorator
 
 import numpy as np
 
@@ -220,6 +221,7 @@ def evaluate_all_masks_for_model(masks, selected_models_of_masks, model, problem
                             
     return best_mask, best_value
 
+@timing_decorator
 def evaluate_all_masks_levin_loss():
     """
     This function implements the greedy approach for selecting masks (options) from Alikhasi and Lelis (2024).
@@ -233,15 +235,10 @@ def evaluate_all_masks_levin_loss():
     number_iterations = 3
     game_width = 5
     number_actions = 3
-    num_models_per_task = 2
-    problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR", "ML-BR", "ML-TR", "MR-BL", "MR-TL"]
+    num_models_per_task = 1
+    problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
 
-    print(f"Parameters: {dict(hidden_size=hidden_size, 
-                              number_iterations=number_iterations, 
-                              game_width=game_width, 
-                              number_actions=number_actions, 
-                              num_models_per_task=num_models_per_task, 
-                              problems=problems)}")
+    print(f"Parameters: {dict(hidden_size=hidden_size, number_iterations=number_iterations, game_width=game_width, number_actions=number_actions, num_models_per_task=num_models_per_task, problems=problems)}")
 
     trajectories = load_trajectories(problems, hidden_size, game_width, num_models_per_task)
 
@@ -345,6 +342,7 @@ def hill_climbing(masks, selected_models_of_masks, model, problem, model_num, tr
             print('Best Mask Overall: ', best_overall, best_value_overall)
     return best_overall, best_value_overall
 
+@timing_decorator
 def hill_climbing_mask_space_training_data_levin_loss():
     """
     This function performs hill climbing in the space of masks of a ReLU neural network
@@ -355,15 +353,11 @@ def hill_climbing_mask_space_training_data_levin_loss():
     game_width = 5
     number_restarts = 100
     number_actions = 3
-    num_models_per_task = 2
-    problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR", "ML-BR", "ML-TR", "MR-BL", "MR-TL"]
+    num_models_per_task = 1
+    problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
 
-    print(f"Parameters: {dict(hidden_size=hidden_size, 
-                              number_iterations=number_iterations, 
-                              game_width=game_width, 
-                              number_actions=number_actions, 
-                              num_models_per_task=num_models_per_task, 
-                              problems=problems)}")
+    print(f"Parameters: {dict(hidden_size=hidden_size, number_iterations=number_iterations, game_width=game_width, number_actions=number_actions, num_models_per_task=num_models_per_task, problems=problems)}")
+
 
     trajectories = load_trajectories(problems, hidden_size, game_width, num_models_per_task)
 
