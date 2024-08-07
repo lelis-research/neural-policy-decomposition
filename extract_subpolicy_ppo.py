@@ -85,7 +85,7 @@ class Agent(nn.Module):
         
         return probs
 
-    def run(self, env, length_cap=None, verbose=False):
+    def run(self, env: ComboGym, length_cap=None, verbose=False):
 
         trajectory = Trajectory()
         current_length = 0
@@ -312,6 +312,28 @@ class LevinLossActorCritic:
                 print()
             print('Number of Decisions: ',  M[len(t)])
 
+    def evaluate_on_each_cell(self, test_agents, masks, problem_test, game_width, label=""):
+        """
+        This test is to see for each cell, options will give which sequence of actions
+        """
+        env = ComboGym(game_width, game_width, problem_test)
+        for agnet, idx, mask in zip(test_agents, range(len(test_agents)), masks):
+            print("\n",label, idx, "Option:", mask.cpu().numpy())
+            options = {}
+            for i in range(game_width):
+                for j in range(game_width):    
+                    if env.is_over(loc=(i,j)):
+                        continue
+                    env.reset((i,j))
+                    trajectory = agnet.run(env, length_cap=2)
+                    actions = trajectory.get_action_sequence()
+                    options[(i,j)] = actions
+            state = trajectory.get_state_sequence()[0]
+            print(state.represent_options(options))
+
+
+        print("#### ### ###\n")
+
 def load_trajectories(problems, hidden_size, game_width, num_envs=4):
     """
     This function loads one trajectory for each problem stored in variable "problems".
@@ -424,6 +446,12 @@ def evaluate_all_masks_levin_loss():
     for i in range(len(selected_masks)):
         print(selected_masks[i])
 
+    print("Testing on each grid cell")
+    for problem in problems:
+        print("Testing...", problem)
+        loss.evaluate_on_each_cell(selected_models_of_masks, selected_masks, problem, game_width)
+
+
 def hill_climbing(masks, selected_models_of_masks, model, problem, trajectories, number_actions, number_iterations, number_restarts, hidden_size):
     """
     Performs Hill Climbing in the mask space for a given model. Note that when computing the loss of a mask (option), 
@@ -535,6 +563,12 @@ def hill_climbing_mask_space_training_data_levin_loss():
     # printing selected options
     for i in range(len(selected_options)):
         print(selected_options[i])
+
+    print("Testing on each grid cell")
+    for problem in problems:
+        print("Testing...", problem)
+        loss.evaluate_on_each_cell(selected_models_of_masks, selected_options, problem, game_width)
+
 
 def main():
     evaluate_all_masks_levin_loss()

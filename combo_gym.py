@@ -40,14 +40,19 @@ class ComboGym(gym.Env):
         
         return self.get_obs(), reward, terminated, trunctuated, {}
     
-    def is_over(self):
+    def is_over(self, loc=None):
+        if loc:
+            return loc == self._game.problem.goal
         return self._game.is_over()
-    
+        
     def get_observation_space(self):
         return self._rows * self._columns * 2 + 9
     
     def get_action_space(self):
         return 3
+    
+    def represent_options(self, options):
+        return self._game.represent_options(options)
     
 register(
      id="ComboGridWorld-v0",
