@@ -1,6 +1,13 @@
 envs
-__pycache__/*
-*.out
+experiments
 *.pth
+*.log
 binary
 outputs
+*.out
+tmp.py
+runnables
+__pycache__/*
+outputs
+logs*
+runs

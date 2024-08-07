@@ -14,13 +14,13 @@ class ComboGym(gym.Env):
         self.action_space = gym.spaces.Discrete(len(self._game.get_actions()))
         self.n_steps = 0
 
-    def _get_obs(self):
+    def get_obs(self):
         return self._game.get_observation()
     
-    def reset(self, seed=0):
+    def reset(self, seed=0, options=None):
         self._game.reset()
         self.n_steps = 0
-        return self._get_obs(), {}
+        return self.get_obs(), {}
     
     def step(self, action:int):
         trunctuated = False
@@ -38,7 +38,21 @@ class ComboGym(gym.Env):
         if self.n_steps == 500:
             trunctuated = True
         
-        return self._get_obs(), reward, terminated, trunctuated, {}
+        return self.get_obs(), reward, terminated, trunctuated, {}
+    
+    def is_over(self, loc=None):
+        if loc:
+            return loc == self._game.problem.goal
+        return self._game.is_over()
+        
+    def get_observation_space(self):
+        return self._rows * self._columns * 2 + 9
+    
+    def get_action_space(self):
+        return 3
+    
+    def represent_options(self, options):
+        return self._game.represent_options(options)
     
 register(
      id="ComboGridWorld-v0",

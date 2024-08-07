@@ -41,18 +41,20 @@ class Game:
     The (0, 0) in the matrices show top and left and it goes to the bottom and right as 
     the indices increases.
     """
-    def __init__(self, rows, columns, problem_str):
+    def __init__(self, rows, columns, problem_str, init_x=None, init_y=None):
         self._rows = rows
         self._columns = columns
 
         self.problem = Problem(rows, columns, problem_str)
         
-        self.reset()
+        if init_x and init_y:
+            self.reset((init_x, init_y))
+        else:
+            self.reset()
 
         self._matrix_structure = np.zeros((rows, columns))
         self._matrix_goal = np.zeros((rows, columns))        
 
-        
         goal = self.problem.goal
         
         self._matrix_goal[goal[0]][goal[1]] = 1
@@ -73,10 +75,10 @@ class Game:
         self._action_pattern[(2, 1, 0)] = 2
         self._action_pattern[(1, 0, 2)] = 3
 
-    def reset(self):
+    def reset(self, init_loc=None):
         self._matrix_unit = np.zeros((self._rows, self._columns))
         initial = self.problem.initial
-        self._x, self._y = initial
+        self._x, self._y = init_loc if init_loc else initial
         self._matrix_unit[self._x][self._y] = 1
         self._state = []
         gc.collect()
@@ -91,6 +93,24 @@ class Game:
                      str_map += " B "
                 elif self._matrix_goal[i][j] == 1:
                      str_map += " G "
+                else: 
+                     str_map += " 0 "
+            str_map += "\n"
+        return str_map
+    
+    def represent_options(self, options: dict) -> str:
+        str_map = ""
+        option_letters = "UDLR"
+        for i in range(self._rows):
+            for j in range(self._columns):
+                if self._matrix_structure[i][j] == 1:
+                     str_map += " B "
+                elif self._matrix_goal[i][j] == 1:
+                     str_map += " G "
+                elif (i,j) in options and tuple(options[(i,j)]) in self._action_pattern:
+                    str_map += f" {option_letters[self._action_pattern[tuple(options[(i,j)])]]} "
+                elif self._matrix_unit[i][j] == 1:
+                    str_map += " A "
                 else: 
                      str_map += " 0 "
             str_map += "\n"
