@@ -5,152 +5,16 @@ import random
 import torch
 import numpy as np
 import gymnasium as gym
-from agent import PolicyGuidedAgent
+from typing import List
 from combo import Game
-from model import CustomRelu
-import torch.nn as nn
-import torch.optim as optim
+from agent import PPOAgent
 from combo_gym import ComboGym
 from utils import timing_decorator
 from torch.distributions.categorical import Categorical
-from agent import Trajectory
-
-def make_env(*args, **kwargs):
-    def thunk():
-        env = ComboGym(*args, **kwargs)
-        env = gym.wrappers.RecordEpisodeStatistics(env)
-        return env
-
-    return thunk
-
-def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
-    torch.nn.init.orthogonal_(layer.weight, std)
-    torch.nn.init.constant_(layer.bias, bias_const)
-    return layer
-
-class Agent(nn.Module):
-    def __init__(self, envs):
-        super().__init__()
-        self.critic = nn.Sequential(
-            layer_init(nn.Linear(envs.get_observation_space(), 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 1), std=1.0),
-        )
-        self.actor = nn.Sequential(
-            layer_init(nn.Linear(envs.get_observation_space(), 6)),
-            nn.Tanh(),
-            layer_init(nn.Linear(6, envs.get_action_space()), std=0.01),
-        )
-
-    def get_value(self, x):
-        return self.critic(x)
-
-    def get_action_and_value(self, x, action=None):
-        logits = self.actor(x)
-        probs = Categorical(logits=logits)
-        if action is None:
-            action = probs.sample()
-        return action, probs.log_prob(action), probs.entropy(), self.critic(x)
-    
-    def masked_neuron_operation(self, logits, mask):
-        """
-        Apply a mask to neuron outputs in a layer.
-
-        Parameters:
-            x (torch.Tensor): The pre-activation outputs (linear outputs) from neurons.
-            mask (torch.Tensor): The mask controlling the operation, where:
-                                1 = pass the linear input
-                                0 = pass zero,
-                                -1 = compute ReLU as usual (part of the program).
-
-        Returns:
-            torch.Tensor: The post-masked outputs of the neurons.
-        """
-        relu_out = torch.relu(logits)
-        output = torch.zeros_like(logits)
-        output[mask == -1] = relu_out[mask == -1]
-        output[mask == 1] = logits[mask == 1]
-
-        return output
-
-    def masked_forward(self, x, mask):
-        hidden_logits = self.actor[0](x)
-        hidden = self.masked_neuron_operation(hidden_logits, mask)
-        hidden_tanh = self.actor[1](hidden)
-        output_logits = self.actor[2](hidden_tanh)
-
-        probs = Categorical(logits=output_logits).probs
-        
-        return probs
-
-    def run(self, env: ComboGym, length_cap=None, verbose=False):
-
-        trajectory = Trajectory()
-        current_length = 0
-        self.actor.requires_grad = False
-
-        if verbose: print('Beginning Trajectory')
-        while not env.is_over():
-            o = torch.Tensor(env.get_obs())
-            a, _, _, _ = self.get_action_and_value(o)
-            trajectory.add_pair(copy.deepcopy(env), a)
-
-            if verbose:
-                print(env, a)
-                print()
-
-            env.step(a.cpu().numpy().item())
-
-            current_length += 1
-            if length_cap is not None and current_length > length_cap:
-                break        
-        
-        self._h = None
-        if verbose: print("End Trajectory \n\n")
-        return trajectory
-
-    def run_with_relu_state(self, env, model):
-        trajectory = Trajectory()
-        current_length = 0
-
-        while not env.is_over():
-            x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
-            prob_actions, hidden_logits = model.forward_and_return_hidden_logits(x_tensor)
-            a = torch.argmax(prob_actions).item()
-            
-            trajectory.add_pair(copy.deepcopy(env), a)
-            print(env.get_observation(), a, (hidden_logits >= 0).float().numpy().tolist())
-            env.apply_action(a)
-
-            current_length += 1  
-
-        return trajectory
-    
-    def run_with_mask(self, env, mask, max_size_sequence):
-        trajectory = Trajectory()
-
-        length = 0
-        while not env.is_over():
-            x_tensor = torch.tensor(env.get_obs(), dtype=torch.float32).view(1, -1)
-            # mask_tensor = torch.tensor(mask, dtype=torch.int8).view(1, -1)
-            prob_actions = self.masked_forward(x_tensor, mask)
-            a = torch.argmax(prob_actions).item()
-            
-            trajectory.add_pair(copy.deepcopy(env), a)
-            env.step(a)
-
-            length += 1
-
-            if length >= max_size_sequence:
-                return trajectory
-
-
-        return trajectory
+from utils import timing_decorator
 
 class LevinLossActorCritic:
-    def is_applicable(self, trajectory, actions, j):
+    def is_applicable(self, trajectory, actions, start_index):
         """
         This function checks whether an MLP is applicable in a given state. 
 
@@ -159,11 +23,11 @@ class LevinLossActorCritic:
         actor-critic agent if it has less than 2 actions, as it would be equivalent to a 
         primitive action. 
         """
-        if len(actions) <= 1 or len(actions) + j > len(trajectory):
+        if len(actions) <= 1 or len(actions) + start_index > len(trajectory):
             return False
         
         for i in range(len(actions)):
-            if actions[i] != trajectory[i + j][1]:
+            if actions[i] != trajectory[i + start_index][1]:
                 return False
         return True
 
@@ -291,7 +155,7 @@ class LevinLossActorCritic:
                         if self.is_applicable(t, actions, j):
                             M[j + len(actions)] = min(M[j + len(actions)], M[j] + 1)
 
-                            mask_name = 'o' + str(i)
+                            mask_name = 'o' + str(i) + "-" + str(masks[i].cpu().numpy())
                             if mask_name not in mask_usage:
                                 mask_usage[mask_name] = []
 
@@ -303,7 +167,7 @@ class LevinLossActorCritic:
             for mask, matrix in mask_usage.items():
                 print('Mask: ', mask)
                 for _, action in t:
-                    print(action.item(), end="")
+                    print(action, end="")
                 print()
                 for use in matrix:
                     for v in use:
@@ -312,25 +176,32 @@ class LevinLossActorCritic:
                 print()
             print('Number of Decisions: ',  M[len(t)])
 
-    def evaluate_on_each_cell(self, test_agents, masks, problem_test, game_width, label=""):
+    def evaluate_on_each_cell(self, test_agents: List[PPOAgent], masks, trained_problems, problem_test, game_width, label=""):
         """
         This test is to see for each cell, options will give which sequence of actions
         """
         env = ComboGym(game_width, game_width, problem_test)
-        for agnet, idx, mask in zip(test_agents, range(len(test_agents)), masks):
-            print("\n",label, idx, "Option:", mask.cpu().numpy())
+        for agent, idx, mask, trained_problem in zip(test_agents, range(len(test_agents)), masks, trained_problems):
+            print("\n",label, idx, "Option:", mask.cpu().numpy(), trained_problem)
             options = {}
             for i in range(game_width):
                 for j in range(game_width):    
                     if env.is_over(loc=(i,j)):
                         continue
                     env.reset((i,j))
-                    trajectory = agnet.run(env, length_cap=2)
+                    trajectory = agent.run_with_mask(env, mask, max_size_sequence=3)
                     actions = trajectory.get_action_sequence()
                     options[(i,j)] = actions
             state = trajectory.get_state_sequence()[0]
-            print(state.represent_options(options))
 
+            print("Actions:")
+            for i in range(game_width):
+                for j in range(game_width):
+                    if env.is_over(loc=(i,j)):
+                        continue
+                    print(options[(i,j)], end=" ")
+                print()
+            print(state.represent_options(options))
 
         print("#### ### ###\n")
 
@@ -344,7 +215,7 @@ def load_trajectories(problems, hidden_size, game_width, num_envs=4):
     trajectories = {}
     for problem in problems:
         env = ComboGym(rows=game_width, columns=game_width, problem=problem)
-        agent = Agent(env) # TODO: move to cuda
+        agent = PPOAgent(env, hidden_size=hidden_size) # TODO: move to cuda
         
         agent.load_state_dict(torch.load(f'binary/PPO-{problem}-game-width{game_width}-hidden{hidden_size}_MODEL.pt'))
 
@@ -378,6 +249,7 @@ def evaluate_all_masks_for_ppo_model(masks, selected_models_of_masks, model, pro
                             
     return best_mask, best_value
 
+@timing_decorator
 def evaluate_all_masks_levin_loss():
     """
     This function implements the greedy approach for selecting masks (options) from Alikhasi and Lelis (2024).
@@ -387,13 +259,26 @@ def evaluate_all_masks_levin_loss():
     This method should only be used with small neural networks, as there are 3^n masks, where n is the number of neurons
     in the hidden layer. 
     """
-    hidden_size = 6
+    hidden_size = 32
     number_iterations = 3
     game_width = 5
     number_actions = 3
     problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
 
+    params = {
+        'hidden_size': hidden_size,
+        'number_iterations': number_iterations,
+        'game_width': game_width,
+        'number_actions': number_actions,
+        'problems': problems
+    }
+
+    print("Parameters:")
+    for key, value in params.items():
+        print(f"- {key}: {value}")
+
     trajectories = load_trajectories(problems, hidden_size, game_width)
+    
 
     previous_loss = None
     best_loss = None
@@ -415,7 +300,7 @@ def evaluate_all_masks_levin_loss():
         for problem in problems:
             print('Problem: ', problem)
             env = ComboGym(rows=game_width, columns=game_width, problem=problem)
-            agent = Agent(env)
+            agent = PPOAgent(env, hidden_size=hidden_size)
             agent.load_state_dict(torch.load(f'binary/PPO-{problem}-game-width{game_width}-hidden{hidden_size}_MODEL.pt'))
 
             mask, levin_loss = evaluate_all_masks_for_ppo_model(selected_masks, selected_models_of_masks, agent, problem, trajectories, number_actions, number_iterations, hidden_size)
@@ -438,7 +323,9 @@ def evaluate_all_masks_levin_loss():
         print("Levin loss of the current set: ", best_loss)
 
     # remove the last automaton added
-    selected_masks = selected_masks[0:len(selected_masks) - 1]
+    num_options = len(selected_masks)
+    selected_masks = selected_masks[0:num_options - 1]
+    selected_models_of_masks = selected_models_of_masks[:num_options - 1]
 
     loss.print_output_subpolicy_trajectory(selected_models_of_masks, selected_masks, selected_options_problem, trajectories, number_iterations)
 
@@ -454,7 +341,7 @@ def evaluate_all_masks_levin_loss():
 
 def hill_climbing(masks, selected_models_of_masks, model, problem, trajectories, number_actions, number_iterations, number_restarts, hidden_size):
     """
-    Performs Hill Climbing in the mask space for a given model. Note that when computing the loss of a mask (option), 
+    Performs Hill Climbing in the mask space for a given agent. Note that when computing the loss of a mask (option), 
     we pass the name of the problem in which the mask is used. That way, we do not evaluate an option on the problem in 
     which the option's model was trained. 
 
@@ -478,7 +365,8 @@ def hill_climbing(masks, selected_models_of_masks, model, problem, trajectories,
             for i in range(len(current_mask)):
                 modifiable_current_mask = copy.deepcopy(current_mask)
                 for v in values:
-   
+                    if v == current_mask[0][i]:
+                        continue
                     modifiable_current_mask[0][i] = v
                     eval_value = loss.compute_loss(masks + [modifiable_current_mask], selected_models_of_masks + [model], problem, trajectories, number_actions, number_iterations)
 
@@ -500,17 +388,30 @@ def hill_climbing(masks, selected_models_of_masks, model, problem, trajectories,
             print('Best Mask Overall: ', best_overall, best_value_overall)
     return best_overall, best_value_overall
 
+@timing_decorator
 def hill_climbing_mask_space_training_data_levin_loss():
     """
     This function performs hill climbing in the space of masks of a ReLU neural network
     to minimize the Levin loss of a given data set. 
     """
-    hidden_size = 32
+    hidden_size = 64
     number_iterations = 3
     game_width = 5
     number_restarts = 100
     number_actions = 3
     problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
+
+    params = {
+        'hidden_size': hidden_size,
+        'number_iterations': number_iterations,
+        'game_width': game_width,
+        'number_actions': number_actions,
+        'problems': problems
+    }
+
+    print("Parameters:")
+    for key, value in params.items():
+        print(f"- {key}: {value}")
 
     trajectories = load_trajectories(problems, hidden_size, game_width)
 
@@ -519,7 +420,7 @@ def hill_climbing_mask_space_training_data_levin_loss():
 
     loss = LevinLossActorCritic()
 
-    selected_options = []
+    selected_masks = []
     selected_models_of_masks = []
     selected_options_problem = []
 
@@ -534,45 +435,53 @@ def hill_climbing_mask_space_training_data_levin_loss():
 
         for problem in problems:
             print('Problem: ', problem)
-            rnn = CustomRelu(game_width**2 * 2 + 9, hidden_size, 3)
-            rnn.load_state_dict(torch.load('binary/game-width' + str(game_width) + '-' + problem + '-relu-' + str(hidden_size) + '-model.pth'))
+            env = ComboGym(rows=game_width, columns=game_width, problem=problem)
+            agent = PPOAgent(env, hidden_size=hidden_size)
+            agent.load_state_dict(torch.load(f'binary/PPO-{problem}-game-width{game_width}-hidden{hidden_size}_MODEL.pt'))
 
-            mask, levin_loss = hill_climbing(selected_options, selected_models_of_masks, rnn, problem, trajectories, number_actions, number_iterations, number_restarts, hidden_size)
+            mask, levin_loss = hill_climbing(selected_masks, selected_models_of_masks, agent, problem, trajectories, number_actions, number_iterations, number_restarts, hidden_size)
 
             if best_loss is None or levin_loss < best_loss:
                 best_loss = levin_loss
                 best_mask = mask
-                model_best_mask = rnn
+                model_best_mask = agent
                 problem_mask = problem
         print()
 
         # we recompute the Levin loss after the automaton is selected so that we can use 
         # the loss on all trajectories as the stopping condition for selecting masks
-        selected_options.append(best_mask)
+        selected_masks.append(best_mask)
         selected_models_of_masks.append(model_best_mask)
         selected_options_problem.append(problem_mask)
-        best_loss = loss.compute_loss(selected_options, selected_models_of_masks, "", trajectories, number_actions, number_iterations)
+        best_loss = loss.compute_loss(selected_masks, selected_models_of_masks, "", trajectories, number_actions, number_iterations)
 
         print("Levin loss of the current set: ", best_loss)
 
     # remove the last automaton added
-    selected_options = selected_options[0:len(selected_options) - 1]
+    num_options = len(selected_masks)
+    selected_masks = selected_masks[0:num_options - 1]
+    selected_models_of_masks = selected_models_of_masks[:num_options - 1]
+    for model, mask in zip(selected_models_of_masks, selected_masks):
+        model.set_mask(mask)
 
-    loss.print_output_subpolicy_trajectory(selected_models_of_masks, selected_options, selected_options_problem, trajectories, number_iterations)
+    loss.print_output_subpolicy_trajectory(selected_models_of_masks, selected_masks, selected_options_problem, trajectories, number_iterations)
 
     # printing selected options
-    for i in range(len(selected_options)):
-        print(selected_options[i])
+    for i in range(len(selected_masks)):
+        print(selected_masks[i])
 
     print("Testing on each grid cell")
     for problem in problems:
         print("Testing...", problem)
-        loss.evaluate_on_each_cell(selected_models_of_masks, selected_options, problem, game_width)
+        loss.evaluate_on_each_cell(selected_models_of_masks, selected_masks, selected_options_problem, problem, game_width)
 
+
+    # TODO: run a new agent with increased number of actions and 
+        # an environment with these options.
 
 def main():
-    evaluate_all_masks_levin_loss()
-    # hill_climbing_mask_space_training_data_levin_loss()
+    # evaluate_all_masks_levin_loss()
+    hill_climbing_mask_space_training_data_levin_loss()
 
 if __name__ == "__main__":
     main()

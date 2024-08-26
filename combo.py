@@ -167,3 +167,13 @@ class Game:
                         self._y += 1
                         self._matrix_unit[self._x][self._y] = 1
             self._state = []
+
+class basic_actions:
+    def __init__(self, action):
+        self.action = action
+
+    def predict(self, x):
+        return self.action
+
+    def predict_hierarchical(self, x, epsilon):
+        return self.predict(x)
