@@ -189,7 +189,7 @@ class LevinLossMLP:
                         continue
                     env.reset((i,j))
                     agent = PolicyGuidedAgent()
-                    trajectory = agent.run(env, model, greedy=True, length_cap=2)
+                    trajectory = agent.run_with_mask(env, model, mask, length_cap=2)
 
                     actions = trajectory.get_action_sequence()
                     options[(i,j)] = actions
@@ -259,10 +259,21 @@ def evaluate_all_masks_levin_loss():
     number_iterations = 3
     game_width = 5
     number_actions = 3
-    num_models_per_task = 1
-    problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
+    num_models_per_task = 2
+    problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR", "ML-BR", "ML-TR", "MR-BL", "MR-TL"]
 
-    print(f"Parameters: {dict(hidden_size=hidden_size, number_iterations=number_iterations, game_width=game_width, number_actions=number_actions, num_models_per_task=num_models_per_task, problems=problems)}")
+    params = {
+        'hidden_size': hidden_size,
+        'number_iterations': number_iterations,
+        'game_width': game_width,
+        'number_actions': number_actions,
+        'num_models_per_task': num_models_per_task,
+        'problems': problems
+    }
+
+    print("Parameters:")
+    for key, value in params.items():
+        print(f"- {key}: {value}")
 
     trajectories = load_trajectories(problems, hidden_size, game_width, num_models_per_task)
 
@@ -382,12 +393,23 @@ def hill_climbing_mask_space_training_data_levin_loss():
     hidden_size = 6
     number_iterations = 3
     game_width = 5
-    number_restarts = 100
+    number_restarts = 400
     number_actions = 3
-    num_models_per_task = 1
-    problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
+    num_models_per_task = 2
+    problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR", "ML-BR", "ML-TR", "MR-BL", "MR-TL"]
 
-    print(f"Parameters: {dict(hidden_size=hidden_size, number_iterations=number_iterations, game_width=game_width, number_actions=number_actions, num_models_per_task=num_models_per_task, problems=problems)}")
+    params = {
+        'hidden_size': hidden_size,
+        'number_iterations': number_iterations,
+        'game_width': game_width,
+        'number_actions': number_actions,
+        'num_models_per_task': num_models_per_task,
+        'problems': problems
+    }
+
+    print("Parameters:")
+    for key, value in params.items():
+        print(f"- {key}: {value}")
 
     trajectories = load_trajectories(problems, hidden_size, game_width, num_models_per_task)
 
