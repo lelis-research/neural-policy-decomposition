@@ -3,8 +3,8 @@ import numpy as np
 from combo import Game
 
 class ComboGym(gym.Env):
-    def __init__(self, rows=3, columns=3, problem="TL-BR"):
-        self._game = Game(rows, columns, "TL-BR")
+    def __init__(self, rows=3, columns=3, problem="TL-BR", partial_observability=True):
+        self._game = Game(rows, columns, problem, partial_observability)
         self._rows = rows
         self._columns = columns
         self._problem = problem

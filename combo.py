@@ -41,9 +41,11 @@ class Game:
     The (0, 0) in the matrices show top and left and it goes to the bottom and right as 
     the indices increases.
     """
-    def __init__(self, rows, columns, problem_str):
+    def __init__(self, rows, columns, problem_str, partial_observability=True):
         self._rows = rows
         self._columns = columns
+        self.last_action = None
+        self.partial_obs = partial_observability
 
         self.problem = Problem(rows, columns, problem_str)
         
@@ -97,9 +99,14 @@ class Game:
         return str_map
     
     def get_observation(self):
-        one_hot_matrix_state = np.zeros((self._pattern_length, self._pattern_length), dtype=int)
-        for i, v in enumerate(self._state):
-            one_hot_matrix_state[v][i] = 1
+        if self.partial_obs:
+            one_hot_matrix_state = np.zeros((3), dtype=int)
+            one_hot_matrix_state[self.last_action] = 1
+        else:
+            one_hot_matrix_state = np.zeros((self._pattern_length, self._pattern_length), dtype=int)
+            for i, v in enumerate(self._state):
+                one_hot_matrix_state[v][i] = 1
+
         return np.concatenate((self._matrix_unit.ravel(), one_hot_matrix_state.ravel(), self._matrix_goal.ravel()))
        
     def is_over(self):
@@ -117,8 +124,9 @@ class Game:
         1, 0, 2 -> right (3)
         """
         # each column in _state_matrix represents an action
+        if self.partial_obs:
+            self.last_action = action
         self._state.append(action)
-
         if len(self._state) == self._pattern_length:
             action_tuple = tuple(self._state)
             if action_tuple in self._action_pattern:

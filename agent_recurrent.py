@@ -9,42 +9,31 @@ import torch.optim as optim
 import tyro
 from torch.utils.tensorboard import SummaryWriter
 
-from stable_baselines3.common.atari_wrappers import (  # isort:skip
-    ClipRewardEnv,
-    EpisodicLifeEnv,
-    FireResetEnv,
-    MaxAndSkipEnv,
-    NoopResetEnv,
-)
+
+# from stable_baselines3.common.atari_wrappers import (  # isort:skip
+#     ClipRewardEnv,
+#     EpisodicLifeEnv,
+#     FireResetEnv,
+#     MaxAndSkipEnv,
+#     NoopResetEnv,
+# )
 from combo import Game
 from combo_gym import ComboGym
 from args import Args
 from model_recurrent import LstmAgent, GruAgent
-
-class PPOCombo(Game):
-    def get_observation(self):
-        one_hot_matrix_state = np.zeros((self._pattern_length, self._pattern_length), dtype=int)
-        for i, v in enumerate(self._state):
-            one_hot_matrix_state[v][i] = 1
-        # return np.concatenate((self._matrix_unit.ravel(), one_hot_matrix_state.ravel()))
-        # return np.concatenate((self._matrix_unit.ravel(), one_hot_matrix_state.ravel(), self._matrix_goal.ravel()))
-        return np.concatenate((self._matrix_unit.ravel(), self._previous_action.ravel(), self._matrix_goal.ravel()))
-
-class PPOComboGym(ComboGym):
-    def __init__(self, rows=3, columns=3, problem="TL-BR"):
-        super.__init__(rows, columns, problem)
-        self._game = PPOCombo(rows, columns, "TL-BR")
     
-def make_env(env_id, idx, capture_video, run_name):
+def make_env(env_id, idx, capture_video, run_name, problem):
     def thunk():
-        env = ComboGym()
+        env = ComboGym(problem=problem)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
     return thunk
 
-def _l1_norm(self, lambda_l1=0.01):
-    l1_norm = sum(p.abs().sum() for p in self.parameters())
+def _l1_norm(model , lambda_l1):
+    if lambda_l1 == 0:
+        return 0
+    l1_norm = sum(p.abs().sum() for p in model.parameters())
     return lambda_l1 * l1_norm
 
 if __name__ == "__main__":
@@ -52,7 +41,8 @@ if __name__ == "__main__":
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
-    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run_name = f"{args.rnn_type}-{args.hidden_size}-l1_{'{:.0e}'.format(args.l1_lambda)}-l2_{'{:.0e}'.format(args.weight_decay)}-{args.problem}-{time.time()}"
+    print(run_name)
     if args.track:
         import wandb
 
@@ -65,7 +55,7 @@ if __name__ == "__main__":
             monitor_gym=True,
             save_code=True,
         )
-    writer = SummaryWriter(f"../runs/{run_name}")
+    writer = SummaryWriter(f"runs/{run_name}")
     writer.add_text(
         "hyperparameters",
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
@@ -81,7 +71,7 @@ if __name__ == "__main__":
 
     # env setup
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, i, args.capture_video, run_name) for i in range(args.num_envs)],
+        [make_env(args.env_id, i, args.capture_video, run_name, args.problem) for i in range(args.num_envs)],
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
@@ -227,9 +217,10 @@ if __name__ == "__main__":
                     mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
 
                 # Policy loss
+                l1_loss = _l1_norm(model=next(agent.children()), lambda_l1=args.l1_lambda)
                 pg_loss1 = -mb_advantages * ratio
                 pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)
-                pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+                pg_loss = torch.max(pg_loss1, pg_loss2).mean()+l1_loss
 
                 # Value loss
                 newvalue = newvalue.view(-1)
@@ -275,4 +266,4 @@ if __name__ == "__main__":
 
     envs.close()
     writer.close()
-    torch.save(agent.state_dict(), '../models/test.pt')
+    torch.save(agent.state_dict(), f'models/{args.problem}/{run_name}.pt')
