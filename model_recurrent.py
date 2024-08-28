@@ -5,11 +5,17 @@ import torch.nn as nn
 
 from torch.distributions.categorical import Categorical
 
+device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
+
+class IdentityLayer(nn.Module):
+    def forward(self, x):
+        return x
+
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
     torch.nn.init.constant_(layer.bias, bias_const)
     return layer
-
+#TO DO: UPDATE LSTM STRUCTURE TO BE ABLE TO ENALBE/DISABLE FEATURE EXTRACTOR AND INPUT_TO_ACTOR
 class LstmAgent(nn.Module):
     def __init__(self, envs, h_size=64):
         super().__init__()
@@ -81,17 +87,22 @@ class LstmAgent(nn.Module):
         return action, probs.log_prob(action), probs.entropy(), self.critic(concatenated), lstm_state
 
 class GruAgent(nn.Module):
-    def __init__(self, envs, h_size=64):
+    def __init__(self, envs, h_size=64, feature_extractor=False, greedy=False):
         super().__init__()
-
-        self.network = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 512)),
-        )
-        self.gru = nn.GRU(512, h_size, 1)
+        self.input_to_actor = False
+        self.greedy = greedy
+        if feature_extractor:
+            self.network = nn.Sequential(
+                layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 160)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 512)),
+            )
+            self.gru = nn.GRU(512, h_size, 1)
+        else:
+            self.network = IdentityLayer()
+            self.gru = nn.GRU(envs.single_observation_space.shape[0], h_size, 1)
 
         for name, param in self.gru.named_parameters():
             if "bias" in name:
@@ -100,21 +111,38 @@ class GruAgent(nn.Module):
                 nn.init.orthogonal_(param, 1.0)
         # self.actor = layer_init(nn.Linear(128 + envs.single_observation_space.shape[0], envs.single_action_space.n), std=0.01)
         # self.critic = layer_init(nn.Linear(128 + envs.single_observation_space.shape[0], 1), std=1)
-        self.actor = nn.Sequential(
-            layer_init(nn.Linear(h_size + envs.single_observation_space.shape[0], 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, envs.single_action_space.n)),
-        )
+        if self.input_to_actor:
+            self.actor = nn.Sequential(
+                layer_init(nn.Linear(h_size + envs.single_observation_space.shape[0], 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, envs.single_action_space.n)),
+            )
 
-        self.critic = nn.Sequential(
-            layer_init(nn.Linear(h_size + envs.single_observation_space.shape[0], 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 1)),
-        )
+            self.critic = nn.Sequential(
+                layer_init(nn.Linear(h_size + envs.single_observation_space.shape[0], 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 1)),
+            )
+        else:
+            self.actor = nn.Sequential(
+                layer_init(nn.Linear(h_size, 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, envs.single_action_space.n)),
+            )
+
+            self.critic = nn.Sequential(
+                layer_init(nn.Linear(h_size , 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 1)),
+            )
 
     def get_states(self, x, gru_state, done):
         hidden = self.network(x)
@@ -132,16 +160,27 @@ class GruAgent(nn.Module):
         return new_hidden, gru_state
 
     def get_value(self, x, gru_state, done):
-        hidden, _ = self.get_states(x, gru_state, done)
-        concatenated = torch.cat((hidden, x), dim=1)
+        if self.input_to_actor:
+            hidden, _ = self.get_states(x, gru_state, done)
+            concatenated = torch.cat((hidden, x), dim=1)
+        else:
+            hidden, _ = self.get_states(x, gru_state, done)
+            concatenated = hidden
         return self.critic(concatenated)
 
     def get_action_and_value(self, x, gru_state, done, action=None):
-        hidden, gru_state = self.get_states(x, gru_state, done)
-        concatenated = torch.cat((hidden, x), dim=1)
+        if self.input_to_actor:
+            hidden, gru_state = self.get_states(x, gru_state, done)
+            concatenated = torch.cat((hidden, x), dim=1)
+        else: 
+            hidden, gru_state = self.get_states(x, gru_state, done)
+            concatenated = hidden
         logits = self.actor(concatenated)
         probs = Categorical(logits=logits)
         if action is None:
-            action = probs.sample()
+            if self.greedy:
+                action = torch.tensor([torch.argmax(logits[i]).item() for i in range(len(logits))])
+            else:
+                action = probs.sample()
         return action, probs.log_prob(action), probs.entropy(), self.critic(concatenated), gru_state
 
