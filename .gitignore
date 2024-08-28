@@ -4,3 +4,7 @@ __pycache__/*
 *.pth
 binary
 outputs
+images/*
+runs/*
+models/*
+test.py
