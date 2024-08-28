@@ -1,4 +1,5 @@
 import copy
+import os
 from itertools import combinations
 from itertools import product
 
@@ -7,6 +8,9 @@ import torch
 from combo import Game
 from extract_automaton import Automaton, ExtractAutomaton
 from model import CustomRNN
+import gymnasium as gym
+from combo_gym import ComboGym
+from model_recurrent import LstmAgent, GruAgent
 
 import heapq
 
@@ -139,30 +143,77 @@ class SubAutomataExtractor:
                     closed.add(c)
 
         return closed
+    
+
+def make_env():
+    def thunk():
+        env = ComboGym(problem="BR-TL")
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        return env
+
+    return thunk
 
 def main():
+    os.environ['PYTHONHASHSEED'] = '0'
 
-    problem = "TL-BR"
+    # problem = "TL-BR"
     # problem = "TR-BL"
     # problem = "BR-TL"
-    # problem = "BL-TR"
+    problem = "BL-TR"
 
-    env = Game(3, 3, problem)
-    rnn = CustomRNN(27, 5, 3)
-    rnn.load_state_dict(torch.load('binary/' + problem + '-model.pth'))
+    # env = Game(3, 3, problem)
+    env = gym.vector.SyncVectorEnv(
+        [make_env() for i in range(1)],
+    )
 
-    extractor = ExtractAutomaton(5, rnn)
+    device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
+    rnn = GruAgent(env, 128).to(device)
+    rnn.load_state_dict(torch.load("models/gru-128-l1_1e-03-l2_0e+00-BL-TR-1724775554.4901335.pt"))
+    rnn.eval()
+    next_obs, _ = env.reset(seed=1)
+    # rnn = CustomRNN(27, 5, 3)
+    # rnn.load_state_dict(torch.load('binary/' + problem + '-model.pth'))
+    # h = torch.zeros(rnn.gru.num_layers, 1, rnn.gru.hidden_size).to(device)
+    # next_done = torch.zeros(1).to(device)
+    # for i in range(5):
+    #     print("***********************************************")
+    h = torch.zeros(rnn.gru.num_layers, 1, rnn.gru.hidden_size).to(device)
+    env.reset()
+    for _ in range(12):
+        x_tensor = torch.tensor(env.observations[0], dtype=torch.float32).view(1, -1)
+        a, logprob, _, value, h = rnn.get_action_and_value(x_tensor, h, torch.zeros(1).to(device))
+        env.step(a.cpu().numpy())
+        print("action: ",a,"\n env: ",env.observations[0],"\n----------------------------")
+
+
+    extractor = ExtractAutomaton(3, rnn)
     automata = extractor.build_automata(env)
 
     counter = 1
     for automaton in automata:
         automaton.print_image('images/full-' + problem + '-' + str(counter))
+        sub_extractor = SubAutomataExtractor(automaton, k=3, width=1)
+        sub_automata = sub_extractor.extract_sub_automata()
+        for i in range(len(sub_automata)):
+            sub_automata[i].print_image(f'images/automata/sub{counter}-{i}')
         counter += 1
 
-    # automaton = automata[0]
-    # sub_extractor = SubAutomataExtractor(automaton, width=1)
-    # automata = sub_extractor.extract_sub_automata()
-    # print('Extracted: ', len(automata), ' automata')
+
+    
+    env.reset(seed=1)
+    h = torch.zeros(rnn.gru.num_layers, 1, rnn.gru.hidden_size).to(device)
+    next_done = torch.zeros(1).to(device)
+    for i in range(5):
+        print("***********************************************")
+        h = torch.zeros(rnn.gru.num_layers, 1, rnn.gru.hidden_size).to(device)
+        env.reset()
+        for i in range(10):
+            # x_tensor = torch.tensor(env.observations[0], dtype=torch.float32).view(1, -1)
+            # a, logprob, _, value, h = rnn.get_action_and_value(x_tensor, h, next_done)
+            # env.step(a.cpu().numpy())
+            # print("action: ",a,"\n env: ",env.observations[0],"\n----------------------------")
+            automata[1].run(env)
+            print(env.observations[0])
 
 if __name__ == "__main__":
     main()

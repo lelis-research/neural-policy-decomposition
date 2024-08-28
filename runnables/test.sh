@@ -4,7 +4,8 @@
 #SBATCH --time=0-3:00      # time (DD-HH:MM)
 #SBATCH --output=%N-%j.out  # %N for node name, %j for jobID
 #SBATCH --account=def-lelis
-#SBATCH --array=0-19
+
+#repetitions: using array    SBATCH --array=0-19
 
 module load python/3.11
 source /home/iprnb/venvs/neural-policy-decomposition/bin/activate

@@ -7,6 +7,20 @@ from extract_automaton import ExtractAutomaton
 from extract_sub_automata import SubAutomataExtractor
 from model import CustomRNN
 
+from itertools import combinations
+from itertools import product
+
+from extract_automaton import Automaton, ExtractAutomaton
+from model import CustomRNN
+import gymnasium as gym
+from combo_gym import ComboGym
+from model_recurrent import LstmAgent, GruAgent
+from extract_automaton import Mode
+
+
+device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
+
+
 import numpy as np
 
 class LevinLossAutomaton:
@@ -88,6 +102,53 @@ class LevinLossAutomaton:
             name_list = [problem for _ in range(len(trajectory._sequence))]
             joint_problem_name_list = joint_problem_name_list + name_list
         return self.loss(automata, chained_trajectory, number_actions, joint_problem_name_list, problem_automaton)
+    
+
+def make_env():
+    def thunk():
+        env = ComboGym()
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        return env
+
+    return thunk
+
+class Trajectory:
+    def __init__(self):
+        self._sequence = []
+
+    def add_pair(self, state, action):
+        self._sequence.append((state, action))
+    
+    def get_trajectory(self):
+        return self._sequence
+
+def _rollout(agent, env):
+    _h = None
+    def _choose_action(env, _h):
+        next_done = torch.zeros(1).to(device)
+        if _h == None:
+            # self._h = self._model.init_hidden()
+            _h = torch.zeros(agent.gru.num_layers, 1, agent.gru.hidden_size).to(device)
+        
+                    
+        # x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
+        x_tensor = torch.tensor(env.observations[0], dtype=torch.float32).view(1, -1)
+        a, logprob, _, value, _h = agent.get_action_and_value(x_tensor, _h, next_done)
+        # prob_actions, self._h = self._model(x_tensor, self._h)
+        
+        # a = torch.argmax(prob_actions).item()
+
+        return a, _h
+        
+    traj = Trajectory()
+    while not env._terminateds[0]:
+        a, _h = _choose_action(env, _h)
+        traj.add_pair(copy.deepcopy(env),a)
+        env.step(a.cpu().numpy())
+    _h = None
+    return traj
+
+
 
 def main():
     """
@@ -95,17 +156,26 @@ def main():
 
     This code assumes that the models were already trained for each one of the problems specified in the list problems below.
     """
-    problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
-    partition_k = 5
+    problems = ["TL-BR"]
+    partition_k = 3
     sub_automata = {}
     complete_automata = []
     for i in range(len(problems)):
         sub_automata[problems[i]] = []
         print('Extracting from model ', problems[i])
 
-        env = Game(3, 3, problems[i])
-        rnn = CustomRNN(27, 5, 3)
-        rnn.load_state_dict(torch.load('binary/' + problems[i] + '-model.pth'))
+        # env = Game(3, 3, problems[i])
+        # rnn = CustomRNN(27, 5, 3)
+        # rnn.load_state_dict(torch.load('binary/' + problems[i] + '-model.pth'))
+        env = gym.vector.SyncVectorEnv(
+        [make_env() for i in range(1)],
+         )
+        device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
+        rnn = GruAgent(env, 6).to(device)
+        rnn.load_state_dict(torch.load("models/gru-6-l1_1e-02-l2_0e+00.pt"))
+        rnn.eval()
+        env.reset(seed=1)
+
 
         extractor = ExtractAutomaton(partition_k, rnn)
         full_automata = extractor.build_automata(env)
@@ -126,14 +196,18 @@ def main():
     # loading the trajectories from the trained policies
     trajectories = {}
     for problem in problems:
-        env = Game(3, 3, problem)
-        agent = PolicyGuidedAgent()
-        rnn = CustomRNN(27, 5, 3)
+        env = gym.vector.SyncVectorEnv(
+        [make_env() for i in range(1)],
+         )
+        rnn = GruAgent(env, 6).to(device)
+        rnn.load_state_dict(torch.load("models/gru-6-l1_1e-02-l2_0e+00.pt"))
+        rnn.eval()
+        env.reset(seed=1)
         number_actions = 3
         
-        rnn.load_state_dict(torch.load('binary/' + problem + '-model.pth'))
 
-        trajectory = agent.run(env, rnn, greedy=True)
+        trajectory = _rollout(rnn, env)
+        print(trajectory._sequence)
         trajectories[problem] = trajectory
 
     loss = LevinLossAutomaton()

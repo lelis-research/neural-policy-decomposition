@@ -25,7 +25,7 @@ class Args:
     env_id: str = "ComboGrid-v0"
 
     """the id of the environment"""
-    total_timesteps: int = 50000
+    total_timesteps: int = 7000000
     """total timesteps of the experiments"""
     learning_rate: float = 2.5e-4
     """the learning rate of the optimizer"""
@@ -49,7 +49,7 @@ class Args:
     """the surrogate clipping coefficient"""
     clip_vloss: bool = True
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
-    ent_coef: float = 0.01
+    ent_coef: float = 0.02
     """coefficient of the entropy"""
     vf_coef: float = 0.5
     """coefficient of the value function"""
@@ -57,12 +57,15 @@ class Args:
     """the maximum norm for the gradient clipping"""
     target_kl: float = None
     """the target KL divergence threshold"""
-    rnn_type: str = "lstm"
+    rnn_type: str = "gru"
     """RNN model type"""
     weight_decay: float = 0
     "weight decay for l2 regularization"
-    hidden_size: int = 128
+    l1_lambda: float = 0.001
+    "l1 lambda regularization"
+    hidden_size: int = 64
     "size of RNN hidden states"
+    problem: str = "BL-TR"
 
     # to be filled in runtime
     batch_size: int = 0
