@@ -75,9 +75,9 @@ class Automaton:
         #     return str(mapping_names[node._state]) + ", a" + str(node._action)
     
     def run(self, env):
-        # current_h = self._initial_mode._h
-        next_h = torch.zeros(self._model.gru.num_layers, 1, self._model.gru.hidden_size).to(device)
-        current_h = next_h.clone()
+        current_h =  torch.tensor([self._initial_mode._h.detach().numpy()])
+        # next_h = torch.zeros(self._model.gru.num_layers, 1, self._model.gru.hidden_size).to(device)
+        next_h = current_h.clone()
         next_done = torch.zeros(1).to(device)
         current_mode = self._initial_mode
         partitioner = Partitioner(self._k)
@@ -90,12 +90,11 @@ class Automaton:
             
             # prob_actions, next_h = self._model(x_tensor, current_h)
             a, logprob, _, value, next_h = self._model.get_action_and_value(x_tensor, next_h, next_done)
-            print(a)
             # a = torch.argmax(prob_actions).item()
 
             next_mode = Mode(partitioner.get_state_automaton(next_h[0]), next_h[0], a)
+            print(x_tensor)
             if next_mode not in self._adjacency_list[current_mode]:
-                print(next_mode._state, next_mode._action)
                 break
             current_mode = next_mode
             # not clear we should use next_h or the h that is stored in the automaton for next_mode
@@ -223,23 +222,23 @@ class ExtractAutomaton:
         # The following code is to be used if we want to consider 
         # a single inital mode to the automaton, the one the recurrent model uses
 
-        # self._initial_modes = set()
-        # h_init = torch.zeros(self._model.gru.num_layers, 1, self._model.gru.hidden_size).to(device)
-        # mode = Mode(self._partitioner.get_state_automaton(h_init[0]), h_init[0])
-        # self._modes.add(mode)
-        # self._initial_modes.add(mode)
+        self._initial_modes = set()
+        h_init = torch.zeros(self._model.gru.num_layers, 1, self._model.gru.hidden_size).to(device)
+        mode = Mode(self._partitioner.get_state_automaton(h_init[0]), h_init[0])
+        self._modes.add(mode)
+        self._initial_modes.add(mode)
 
         # The following code is to be used if we want to consider all modes as initial
         # modes in the automaton. This option gives us more programs to search over. 
-        self._initial_modes = set()
-        initial_modes = []
-        for mode in self._modes:
-            initial_mode = Mode(mode._state, mode._h)
-            initial_modes.append(initial_mode)
+        # self._initial_modes = set()
+        # initial_modes = []
+        # for mode in self._modes:
+        #     initial_mode = Mode(mode._state, mode._h)
+        #     initial_modes.append(initial_mode)
     
-        for initial_mode in initial_modes:
-            self._modes.add(initial_mode)
-            self._initial_modes.add(initial_mode)
+        # for initial_mode in initial_modes:
+        #     self._modes.add(initial_mode)
+        #     self._initial_modes.add(initial_mode)
     
     def build_automata(self, env):
         observations, h_states, actions = self._rollout(env)

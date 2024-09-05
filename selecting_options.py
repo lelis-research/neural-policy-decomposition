@@ -64,6 +64,7 @@ class LevinLossAutomaton:
                     if joint_problem_name_list[j] == problem_automata:
                         continue
                     finished, actions = automaton.run(copy.deepcopy(t[j][0]))
+                    print(finished, actions)
 
                     if self.is_automaton_applicable(t, actions, finished, j):
                         M[j + len(actions)] = min(M[j + len(actions)], M[j] + 1)
@@ -94,7 +95,6 @@ class LevinLossAutomaton:
         chained_trajectory = None
         joint_problem_name_list = []
         for problem, trajectory in trajectories.items():
-
             if chained_trajectory is None:
                 chained_trajectory = copy.deepcopy(trajectory)
             else:
@@ -104,9 +104,9 @@ class LevinLossAutomaton:
         return self.loss(automata, chained_trajectory, number_actions, joint_problem_name_list, problem_automaton)
     
 
-def make_env():
+def make_env(problem):
     def thunk():
-        env = ComboGym()
+        env = ComboGym(problem=problem)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
@@ -156,7 +156,8 @@ def main():
 
     This code assumes that the models were already trained for each one of the problems specified in the list problems below.
     """
-    problems = ["TL-BR"]
+    problems = ["BR-TL", "TL-BR", "BL-TR", "TR-BL"]
+    # problems = ["BR-TL"]
     partition_k = 3
     sub_automata = {}
     complete_automata = []
@@ -168,11 +169,11 @@ def main():
         # rnn = CustomRNN(27, 5, 3)
         # rnn.load_state_dict(torch.load('binary/' + problems[i] + '-model.pth'))
         env = gym.vector.SyncVectorEnv(
-        [make_env() for i in range(1)],
+        [make_env(problems[i]) for _ in range(1)],
          )
         device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
-        rnn = GruAgent(env, 6).to(device)
-        rnn.load_state_dict(torch.load("models/gru-6-l1_1e-02-l2_0e+00.pt"))
+        rnn = GruAgent(env, 32).to(device)
+        rnn.load_state_dict(torch.load(f"models/gru-32-l1_1e-03-l2_0e+00-{problems[i]}.pt"))
         rnn.eval()
         env.reset(seed=1)
 
@@ -197,17 +198,17 @@ def main():
     trajectories = {}
     for problem in problems:
         env = gym.vector.SyncVectorEnv(
-        [make_env() for i in range(1)],
+        [make_env(problem) for i in range(1)],
          )
-        rnn = GruAgent(env, 6).to(device)
-        rnn.load_state_dict(torch.load("models/gru-6-l1_1e-02-l2_0e+00.pt"))
+        rnn = GruAgent(env, 32).to(device)
+        rnn.load_state_dict(torch.load(f"models/gru-32-l1_1e-03-l2_0e+00-{problem}.pt"))
         rnn.eval()
         env.reset(seed=1)
         number_actions = 3
         
 
         trajectory = _rollout(rnn, env)
-        print(trajectory._sequence)
+        # print(trajectory._sequence)
         trajectories[problem] = trajectory
 
     loss = LevinLossAutomaton()
@@ -230,11 +231,13 @@ def main():
             for automaton in automata:
 
                 levin_loss = loss.compute_loss(selected_automata + [automaton], problem_automaton, trajectories, number_actions)
+                # print(levin_loss)
 
                 if best_loss is None or levin_loss < best_loss:
                     best_loss = levin_loss
                     best_automaton = automaton
                     best_size = automaton.get_size()
+                    # print(best_size, levin_loss < best_loss)
                 # The following statement ensures that we prefer smaller automaton in case
                 # of ties in the Levin loss. The minus 0.01 is to avoid precision issues 
                 # while detecting ties. 
@@ -249,6 +252,8 @@ def main():
         best_loss = loss.compute_loss(selected_automata, "", trajectories, number_actions)
 
         print("Levin loss of the current set: ", best_loss)
+        for a in selected_automata:
+            print(a._modes, a._initial_mode)
 
     # remove the last automaton added
     selected_automata = selected_automata[0:len(selected_automata) - 1]

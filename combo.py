@@ -80,6 +80,8 @@ class Game:
         self._matrix_unit = np.zeros((self._rows, self._columns))
         initial = self.problem.initial
         self._x, self._y = initial
+        self._matrix_unit[self._x][self._y] = 1
+        self.last_action = None
         self._state = []
         gc.collect()
 
@@ -101,7 +103,8 @@ class Game:
     def get_observation(self):
         if self.partial_obs:
             one_hot_matrix_state = np.zeros((3), dtype=int)
-            one_hot_matrix_state[self.last_action] = 1
+            if self.last_action:
+                one_hot_matrix_state[self.last_action] = 1
         else:
             one_hot_matrix_state = np.zeros((self._pattern_length, self._pattern_length), dtype=int)
             for i, v in enumerate(self._state):

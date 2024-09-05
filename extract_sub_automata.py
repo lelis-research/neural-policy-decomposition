@@ -145,9 +145,9 @@ class SubAutomataExtractor:
         return closed
     
 
-def make_env():
+def make_env(problem):
     def thunk():
-        env = ComboGym(problem="BR-TL")
+        env = ComboGym(problem=problem)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
@@ -157,13 +157,13 @@ def main():
     os.environ['PYTHONHASHSEED'] = '0'
 
     # problem = "TL-BR"
-    # problem = "TR-BL"
+    problem = "TR-BL"
     # problem = "BR-TL"
-    problem = "BL-TR"
+    # problem = "BL-TR"
 
     # env = Game(3, 3, problem)
     env = gym.vector.SyncVectorEnv(
-        [make_env() for i in range(1)],
+        [make_env(problem) for i in range(1)],
     )
 
     device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
@@ -188,7 +188,6 @@ def main():
 
     extractor = ExtractAutomaton(3, rnn)
     automata = extractor.build_automata(env)
-
     counter = 1
     for automaton in automata:
         automaton.print_image('images/full-' + problem + '-' + str(counter))
