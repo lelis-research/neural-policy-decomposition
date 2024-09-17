@@ -3,15 +3,19 @@ import itertools
 import math
 import random
 import torch
+import time
 import numpy as np
 import gymnasium as gym
 from typing import List
-from combo import Game
-from agent import PPOAgent
-from combo_gym import ComboGym
-from utils import timing_decorator
+from environments_combogrid import Game
+from agents.policy_guided_agent import PPOAgent
+from environments_combogrid_gym import ComboGym, make_env
+from utils.utils import timing_decorator
 from torch.distributions.categorical import Categorical
-from utils import timing_decorator
+from utils.utils import timing_decorator, get_ppo_model_file_name
+from ppo import Args, train_ppo
+from torch.utils.tensorboard import SummaryWriter
+
 
 class LevinLossActorCritic:
     def is_applicable(self, trajectory, actions, start_index):
@@ -182,19 +186,20 @@ class LevinLossActorCritic:
         """
         env = ComboGym(game_width, game_width, problem_test)
         for agent, idx, mask, trained_problem in zip(test_agents, range(len(test_agents)), masks, trained_problems):
+            # Evaluating the performance of options
             print("\n",label, idx, "Option:", mask.cpu().numpy(), trained_problem)
             options = {}
             for i in range(game_width):
                 for j in range(game_width):    
                     if env.is_over(loc=(i,j)):
                         continue
-                    env.reset((i,j))
+                    env.reset(init_loc=(i,j))
                     trajectory = agent.run_with_mask(env, mask, max_size_sequence=3)
                     actions = trajectory.get_action_sequence()
                     options[(i,j)] = actions
             state = trajectory.get_state_sequence()[0]
 
-            print("Actions:")
+            print("Option Outputs:")
             for i in range(game_width):
                 for j in range(game_width):
                     if env.is_over(loc=(i,j)):
@@ -203,9 +208,30 @@ class LevinLossActorCritic:
                 print()
             print(state.represent_options(options))
 
+            # Evaluating the performance of original agents
+            options = {}
+            for i in range(game_width):
+                for j in range(game_width):    
+                    if env.is_over(loc=(i,j)):
+                        continue
+                    env.reset(init_loc=(i,j))
+                    trajectory = agent.run(env, length_cap=2)
+                    actions = trajectory.get_action_sequence()
+                    options[(i,j)] = actions
+            state = trajectory.get_state_sequence()[0]
+
+            print("Original Agent's Outputs:")
+            for i in range(game_width):
+                for j in range(game_width):
+                    if env.is_over(loc=(i,j)):
+                        continue
+                    print(options[(i,j)], end=" ")
+                print()
+            print(state.represent_options(options))
         print("#### ### ###\n")
 
-def load_trajectories(problems, hidden_size, game_width, num_envs=4):
+
+def load_trajectories(problems, hidden_size, game_width, l1_lambda=None, num_envs=4, verbose=False):
     """
     This function loads one trajectory for each problem stored in variable "problems".
 
@@ -214,15 +240,19 @@ def load_trajectories(problems, hidden_size, game_width, num_envs=4):
     
     trajectories = {}
     for problem in problems:
+        model_file = get_ppo_model_file_name(hidden_size=hidden_size, game_width=game_width, problem=problem, l1_lambda=l1_lambda)
+        if verbose:
+            print(f"Loading Trajectories from {model_file} ...")
         env = ComboGym(rows=game_width, columns=game_width, problem=problem)
         agent = PPOAgent(env, hidden_size=hidden_size) # TODO: move to cuda
         
-        agent.load_state_dict(torch.load(f'binary/PPO-{problem}-game-width{game_width}-hidden{hidden_size}_MODEL.pt'))
+        agent.load_state_dict(torch.load(model_file))
 
-        trajectory = agent.run(env, verbose=True)
+        trajectory = agent.run(env, verbose=verbose)
         trajectories[problem] = trajectory
 
     return trajectories
+
 
 def evaluate_all_masks_for_ppo_model(masks, selected_models_of_masks, model, problem, trajectories, number_actions, number_iterations, hidden_size):
     """
@@ -248,6 +278,7 @@ def evaluate_all_masks_for_ppo_model(masks, selected_models_of_masks, model, pro
             print(best_mask, best_value)
                             
     return best_mask, best_value
+
 
 @timing_decorator
 def evaluate_all_masks_levin_loss():
@@ -299,9 +330,10 @@ def evaluate_all_masks_levin_loss():
 
         for problem in problems:
             print('Problem: ', problem)
+            model_file = get_ppo_model_file_name(hidden_size=hidden_size, game_width=game_width, problem=problem)
             env = ComboGym(rows=game_width, columns=game_width, problem=problem)
             agent = PPOAgent(env, hidden_size=hidden_size)
-            agent.load_state_dict(torch.load(f'binary/PPO-{problem}-game-width{game_width}-hidden{hidden_size}_MODEL.pt'))
+            agent.load_state_dict(torch.load(model_file))
 
             mask, levin_loss = evaluate_all_masks_for_ppo_model(selected_masks, selected_models_of_masks, agent, problem, trajectories, number_actions, number_iterations, hidden_size)
 
@@ -388,6 +420,7 @@ def hill_climbing(masks, selected_models_of_masks, model, problem, trajectories,
             print('Best Mask Overall: ', best_overall, best_value_overall)
     return best_overall, best_value_overall
 
+
 @timing_decorator
 def hill_climbing_mask_space_training_data_levin_loss():
     """
@@ -397,15 +430,18 @@ def hill_climbing_mask_space_training_data_levin_loss():
     hidden_size = 64
     number_iterations = 3
     game_width = 5
-    number_restarts = 100
+    number_restarts = 400
     number_actions = 3
+    l1_lambda = 0
     problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
 
     params = {
         'hidden_size': hidden_size,
         'number_iterations': number_iterations,
         'game_width': game_width,
+        'number_restarts': number_restarts,
         'number_actions': number_actions,
+        'l1_lambda': l1_lambda,
         'problems': problems
     }
 
@@ -413,7 +449,7 @@ def hill_climbing_mask_space_training_data_levin_loss():
     for key, value in params.items():
         print(f"- {key}: {value}")
 
-    trajectories = load_trajectories(problems, hidden_size, game_width)
+    trajectories = load_trajectories(problems, hidden_size, game_width, l1_lambda=l1_lambda)
 
     previous_loss = None
     best_loss = None
@@ -435,9 +471,10 @@ def hill_climbing_mask_space_training_data_levin_loss():
 
         for problem in problems:
             print('Problem: ', problem)
+            model_file = get_ppo_model_file_name(hidden_size=hidden_size, game_width=game_width, problem=problem, l1_lambda=l1_lambda)
             env = ComboGym(rows=game_width, columns=game_width, problem=problem)
             agent = PPOAgent(env, hidden_size=hidden_size)
-            agent.load_state_dict(torch.load(f'binary/PPO-{problem}-game-width{game_width}-hidden{hidden_size}_MODEL.pt'))
+            agent.load_state_dict(torch.load(model_file))
 
             mask, levin_loss = hill_climbing(selected_masks, selected_models_of_masks, agent, problem, trajectories, number_actions, number_iterations, number_restarts, hidden_size)
 
@@ -475,9 +512,58 @@ def hill_climbing_mask_space_training_data_levin_loss():
         print("Testing...", problem)
         loss.evaluate_on_each_cell(selected_models_of_masks, selected_masks, selected_options_problem, problem, game_width)
 
+    for problem in problems:
+        print("Retraining on", problem)
+        train_extended_ppo(selected_models_of_masks, problem, params)
 
-    # TODO: run a new agent with increased number of actions and 
-        # an environment with these options.
+
+def train_extended_ppo(options, problem, params):
+    args = Args()
+    device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
+
+    game_width = params['game_width']
+    hidden_size = params['hidden_size']
+    l1_lambda = params['l1_lambda']
+    number_restarts = params['number_restarts']
+    number_actions = params['number_actions']
+
+    model_file_name = get_ppo_model_file_name(tag="extended",
+                                              problem=problem,
+                                              game_width=game_width,
+                                              hidden_size=hidden_size,
+                                              l1_lambda=l1_lambda)
+    
+    envs = envs = gym.vector.SyncVectorEnv(
+        [make_env(rows=game_width, columns=game_width, problem=problem, options=options) for _ in range(args.num_envs)],
+    )    
+    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
+    
+    args.batch_size = int(args.num_envs * args.num_steps)
+    args.minibatch_size = int(args.batch_size // args.num_minibatches)
+    args.num_iterations = args.total_timesteps // args.batch_size
+    exp_name = f"PPO_{problem}-{hidden_size}_{game_width}_{l1_lambda}_{number_restarts}_{number_actions}"
+    run_name = f"{exp_name}__{args.seed}__{int(time.time())}_retrained"
+    writer = SummaryWriter(f"runs/{run_name}")
+    writer.add_text(
+        "hyperparameters",
+        "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
+    )
+
+    problem_setting = {"problem": problem}
+    problem_setting.update(params)
+    problem_setting.update({f"option{i}":option.mask.tolist() for i, option in enumerate(options)})
+    writer.add_text(
+        "problem_setting",
+        "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in problem_setting.items()])),)
+
+    train_ppo(envs=envs, 
+              args=args, 
+              hidden_size=hidden_size, 
+              l1_lambda=l1_lambda, 
+              model_file_name=model_file_name, 
+              device=device,
+              writer=writer)
+
 
 def main():
     # evaluate_all_masks_levin_loss()

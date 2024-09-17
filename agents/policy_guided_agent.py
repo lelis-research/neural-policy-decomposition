@@ -1,51 +1,17 @@
 import copy
 import random
 import torch
-import torch as th
 import numpy as np
 from tqdm import tqdm
 
 import torch.nn as nn
-from combo_gym import ComboGym
-from combo import Game
+from environments_combogrid_gym import ComboGym
+from gymnasium.vector import SyncVectorEnv
+from environments_combogrid import Game
 from torch.distributions.categorical import Categorical
-from model import construct_PPO
-from model import CustomRNN, CustomRelu 
-from utils import timing_decorator
-
-class Trajectory:
-    def __init__(self):
-        self._sequence = []
-
-    def add_pair(self, state, action):
-        self._sequence.append((state, action))
-    
-    def get_trajectory(self):
-        return self._sequence
-    
-    def get_action_sequence(self):
-        return [pair[1] for pair in self._sequence]
-    
-    def get_state_sequence(self):
-        return [pair[0] for pair in self._sequence]
-    
-    def __repr__(self):
-        return f"Trajectory(sequence={self._sequence})"
-
-
-class RandomAgent:
-    def run(self, env):
-        trajectory = Trajectory()
-
-        while not env.is_over():
-            actions = env.get_actions()
-            a = actions[random.randint(0, len(actions) - 1)]
-
-            trajectory.add_pair(copy.deepcopy(env.get_observation()), a)
-            env.apply_action(a)
-        
-        return trajectory
-    
+from models.models_mlp import CustomRNN, CustomRelu 
+from utils.utils import timing_decorator
+from trajectory import Trajectory
 
 class PolicyGuidedAgent:
     def __init__(self):
@@ -137,30 +103,39 @@ class PolicyGuidedAgent:
 
 
         return trajectory
-    
+
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
     torch.nn.init.constant_(layer.bias, bias_const)
     return layer
-    
+
 
 class PPOAgent(nn.Module):
     def __init__(self, envs, hidden_size=6):
         super().__init__()
+        if isinstance(envs, ComboGym):
+            observation_space_size = envs.get_observation_space()
+            action_space_size = envs.get_action_space()
+        elif isinstance(envs, SyncVectorEnv):
+            observation_space_size = envs.observation_space.shape[1]
+            action_space_size = envs.action_space[0].n.item()
+
+        print(observation_space_size, action_space_size)
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(envs.get_observation_space(), 64)),
+            layer_init(nn.Linear(observation_space_size, 64)),
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
             nn.Tanh(),
             layer_init(nn.Linear(64, 1), std=1.0),
         )
         self.actor = nn.Sequential(
-            layer_init(nn.Linear(envs.get_observation_space(), hidden_size)),
+            layer_init(nn.Linear(observation_space_size, hidden_size)),
             nn.Tanh(),
-            layer_init(nn.Linear(hidden_size, envs.get_action_space()), std=0.01),
+            layer_init(nn.Linear(hidden_size, action_space_size), std=0.01),
         )
         self.mask = None
+        
 
     def get_value(self, x):
         return self.critic(x)
@@ -253,7 +228,7 @@ class PPOAgent(nn.Module):
 
         return trajectory
     
-    def get_action_with_mask(self, x_tensor, mask):
+    def get_action_with_mask(self, x_tensor, mask=None):
         prob_actions = self._masked_forward(x_tensor, mask)
         a = torch.argmax(prob_actions).item()
         return a
@@ -276,54 +251,3 @@ class PPOAgent(nn.Module):
                 return trajectory
 
         return trajectory
-
-@timing_decorator
-def main():
-    hidden_size = 64
-    game_width = 5
-    num_models_per_task = 2
-
-    # problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR", "ML-BR", "ML-TR", "MR-BL", "MR-TL"]
-    problems = ["MR-TL"]
-
-    print(f"Parameters: problems:{problems}, hidden_size:{hidden_size}, game_width:{game_width}, num_models_per_task:{num_models_per_task}")
-
-    rnns = {problem:[CustomRelu(game_width**2 * 2 + 3**2, hidden_size, 3) \
-                     for _ in range(num_models_per_task)] \
-                        for problem in problems}
-
-    policy_agent = PolicyGuidedAgent()
-
-    shortest_trajectory_length = np.inf
-    best_trajectory = None
-
-    for problem in tqdm(problems):
-        env = Game(game_width, game_width, problem)
-        for model_num, rnn in enumerate(rnns[problem]):
-            for _ in range(150):
-                for _ in range(500):
-                    env.reset()
-                    trajectory = policy_agent.run(env, rnn, length_cap=shortest_trajectory_length, verbose=False)
-
-                    if len(trajectory.get_trajectory()) < shortest_trajectory_length:
-                        shortest_trajectory_length = len(trajectory.get_trajectory())
-                        best_trajectory = trajectory
-
-                print('Trajectory length: ', len(best_trajectory.get_trajectory()))
-                for _ in range(10):
-                    loss = rnn.train(best_trajectory)
-                    print(f"loss: {loss.item()}")
-                print()
-
-            policy_agent._epsilon = 0.0
-            env.reset()
-            policy_agent.run(env, rnn, greedy=True, length_cap=None, verbose=True)
-            rnn.print_weights()
-
-            env.reset()
-            policy_agent.run_with_relu_state(env, rnn)
-
-            torch.save(rnn.state_dict(), f'binary/game-width{game_width}-{problem}-relu-{hidden_size}-model-{model_num}.pth')
-
-if __name__ == "__main__":
-    main()

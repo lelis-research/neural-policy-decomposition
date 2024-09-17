@@ -4,9 +4,9 @@ from itertools import product
 
 import torch
 
-from combo import Game
+from environments_combogrid import Game
 from extract_automaton import Automaton, ExtractAutomaton
-from model import CustomRNN
+from models.models_mlp import CustomRNN
 
 import heapq
 

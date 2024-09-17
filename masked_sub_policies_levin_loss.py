@@ -3,12 +3,12 @@ import itertools
 import math
 import random
 import torch
-from agent import PolicyGuidedAgent
-from combo import Game
-from model import CustomRelu
-from utils import timing_decorator
-
 import numpy as np
+from agents.policy_guided_agent import PolicyGuidedAgent
+from environments_combogrid import Game
+from models.models_mlp import CustomRelu
+from utils.utils import timing_decorator
+
 
 class LevinLossMLP:
     def is_mlp_applicable(self, trajectory, actions, j):
@@ -199,6 +199,7 @@ class LevinLossMLP:
 
         print("#### ### ###\n")
 
+
 def load_trajectories(problems, hidden_size, game_width, num_models_per_task):
     """
     This function loads one trajectory for each problem stored in variable "problems".
@@ -219,6 +220,7 @@ def load_trajectories(problems, hidden_size, game_width, num_models_per_task):
             trajectories[problem].append(trajectory)
 
     return trajectories
+
 
 def evaluate_all_masks_for_model(masks, selected_models_of_masks, model, problem, model_num, trajectories, number_actions, number_iterations, hidden_size):
     """

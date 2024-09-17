@@ -10,10 +10,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import tyro
+from utils.utils_nn import layer_init
 from torch.distributions.categorical import Categorical
 from torch.utils.tensorboard import SummaryWriter
-from combo_gym import ComboGym
-from utils import timing_decorator
+from environments_combogrid_gym import ComboGym, make_env
+from agents.policy_guided_agent import PPOAgent
+from utils.utils import timing_decorator, get_ppo_model_file_name
 
 @dataclass
 class Args:
@@ -79,22 +81,8 @@ class Args:
     """the number of iterations (computed in runtime)"""
 
 
-def make_env(*args, **kwargs):
-    def thunk():
-        env = ComboGym(*args, **kwargs)
-        env = gym.wrappers.RecordEpisodeStatistics(env)
-        return env
-
-    return thunk
-
-def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
-    torch.nn.init.orthogonal_(layer.weight, std)
-    torch.nn.init.constant_(layer.bias, bias_const)
-    return layer
-
-
 class Agent(nn.Module):
-    def __init__(self, envs):
+    def __init__(self, envs, hidden_size=6):
         super().__init__()
         self.critic = nn.Sequential(
             layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
@@ -104,9 +92,9 @@ class Agent(nn.Module):
             layer_init(nn.Linear(64, 1), std=1.0),
         )
         self.actor = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 6)),
+            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), hidden_size)),
             nn.Tanh(),
-            layer_init(nn.Linear(6, envs.single_action_space.n), std=0.01),
+            layer_init(nn.Linear(hidden_size, envs.single_action_space.n), std=0.01),
         )
 
     def get_value(self, x):
@@ -120,48 +108,8 @@ class Agent(nn.Module):
         return action, probs.log_prob(action), probs.entropy(), self.critic(x)
 
 
-@timing_decorator
-def main():
-    args = tyro.cli(Args)
-    args.batch_size = int(args.num_envs * args.num_steps)
-    args.minibatch_size = int(args.batch_size // args.num_minibatches)
-    args.num_iterations = args.total_timesteps // args.batch_size
-    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
-    if args.track:
-        import wandb
-
-        wandb.init(
-            project=args.wandb_project_name,
-            entity=args.wandb_entity,
-            sync_tensorboard=True,
-            config=vars(args),
-            name=run_name,
-            monitor_gym=True,
-            save_code=True,
-        )
-    writer = SummaryWriter(f"runs/{run_name}")
-    writer.add_text(
-        "hyperparameters",
-        "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
-    )
-
-    # TRY NOT TO MODIFY: seeding
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-    torch.backends.cudnn.deterministic = args.torch_deterministic
-
-    device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
-
-    # env setup
-    game_width = 5
-    problem = "TL-BR"
-    envs = gym.vector.SyncVectorEnv(
-        [make_env(rows=game_width, columns=game_width, problem=problem) for _ in range(args.num_envs)],
-    )    
-    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
-
-    agent = Agent(envs).to(device)
+def train_ppo(envs, args, hidden_size, l1_lambda, model_file_name, device, writer=None):
+    agent = PPOAgent(envs, hidden_size=hidden_size).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
@@ -279,7 +227,12 @@ def main():
                     v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
 
                 entropy_loss = entropy.mean()
-                loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef
+
+                l1_reg = torch.tensor(0.).to(device)
+                for param in agent.actor.parameters():
+                    l1_reg += torch.norm(param, 1)
+
+                loss = pg_loss - args.ent_coef * entropy_loss + v_loss * args.vf_coef + l1_lambda * l1_reg
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -301,13 +254,77 @@ def main():
         writer.add_scalar("losses/old_approx_kl", old_approx_kl.item(), global_step)
         writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
         writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
+        writer.add_scalar("losses/l1_reg", l1_reg.item(), global_step)
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
     envs.close()
     writer.close()
-    torch.save(agent.state_dict(), f'binary/PPO-{problem}-game-width{game_width}-hidden{6}_MODEL.pt')
+    torch.save(agent.state_dict(), model_file_name)
+
+
+@timing_decorator
+def main():
+    args = tyro.cli(Args)
+    args.batch_size = int(args.num_envs * args.num_steps)
+    args.minibatch_size = int(args.batch_size // args.num_minibatches)
+    args.num_iterations = args.total_timesteps // args.batch_size
+    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    if args.track:
+        import wandb
+
+        wandb.init(
+            project=args.wandb_project_name,
+            entity=args.wandb_entity,
+            sync_tensorboard=True,
+            config=vars(args),
+            name=run_name,
+            monitor_gym=True,
+            save_code=True,
+        )
+    writer = SummaryWriter(f"runs/{run_name}")
+    writer.add_text(
+        "hyperparameters",
+        "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
+    )
+
+    # TRY NOT TO MODIFY: seeding
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.backends.cudnn.deterministic = args.torch_deterministic
+
+    device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
+
+    # env setup
+    game_width = 5
+    hidden_size = 64
+    problem = "BR-TL"
+    l1_lambda = 1e-4
+
+    params = {
+        'hidden_size': hidden_size,
+        'game_width': game_width,
+        'l1_lambda': l1_lambda,
+        'problem': problem
+    }
+
+    print("Parameters:")
+    for key, value in params.items():
+        print(f"- {key}: {value}")
+
+    model_file_name = get_ppo_model_file_name(problem=problem,
+                                              game_width=game_width,
+                                              hidden_size=hidden_size,
+                                              l1_lambda=l1_lambda)
+    envs = gym.vector.SyncVectorEnv(
+        [make_env(rows=game_width, columns=game_width, problem=problem) for _ in range(args.num_envs)],
+    )    
+    assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
+
+    print("envs.action_space.n",envs.action_space[0].n)
+    train_ppo(envs, args, hidden_size, l1_lambda, model_file_name, device, writer)
 
 
 if __name__ == "__main__":
