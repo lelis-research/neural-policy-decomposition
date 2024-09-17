@@ -1,21 +1,13 @@
 import copy
 import math
 import torch
-from agent import PolicyGuidedAgent
-from combo import Game
 from extract_automaton import ExtractAutomaton
 from extract_sub_automata import SubAutomataExtractor
-from model import CustomRNN
 
-from itertools import combinations
-from itertools import product
-
-from extract_automaton import Automaton, ExtractAutomaton
-from model import CustomRNN
+from extract_automaton import ExtractAutomaton
 import gymnasium as gym
 from combo_gym import ComboGym
-from model_recurrent import LstmAgent, GruAgent
-from extract_automaton import Mode
+from model_recurrent import GruAgent
 
 
 device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
@@ -63,8 +55,8 @@ class LevinLossAutomaton:
                     # from which the automaton was extracted. 
                     if joint_problem_name_list[j] == problem_automata:
                         continue
-                    finished, actions = automaton.run(copy.deepcopy(t[j][0]))
-                    print(finished, actions)
+                    finished, actions, _, _, _, _, _ = automaton.run(copy.deepcopy(t[j][0]))
+                    # print(finished, actions)
 
                     if self.is_automaton_applicable(t, actions, finished, j):
                         M[j + len(actions)] = min(M[j + len(actions)], M[j] + 1)
@@ -150,13 +142,13 @@ def _rollout(agent, env):
 
 
 
-def main():
+def extract_options():
     """
     This is the function to perform the selection of sub-automata from the automaton extract from recurrent models.
 
     This code assumes that the models were already trained for each one of the problems specified in the list problems below.
     """
-    problems = ["BR-TL", "TL-BR", "BL-TR", "TR-BL"]
+    problems = ["BL-TR", "TR-BL", "BR-TL", "TL-BR"]
     # problems = ["BR-TL"]
     partition_k = 3
     sub_automata = {}
@@ -241,6 +233,8 @@ def main():
                 # The following statement ensures that we prefer smaller automaton in case
                 # of ties in the Levin loss. The minus 0.01 is to avoid precision issues 
                 # while detecting ties. 
+                # elif levin_loss == best_loss:
+                #     print("TIES!")
                 elif levin_loss - 0.01 < best_loss and automaton.get_size() < best_size:
                     best_loss = levin_loss
                     best_automaton = automaton
@@ -252,16 +246,13 @@ def main():
         best_loss = loss.compute_loss(selected_automata, "", trajectories, number_actions)
 
         print("Levin loss of the current set: ", best_loss)
-        for a in selected_automata:
-            print(a._modes, a._initial_mode)
-
+        # for a in selected_automata:
+            # print(a._modes_dict)
     # remove the last automaton added
     selected_automata = selected_automata[0:len(selected_automata) - 1]
 
     counter = 1
-    for automaton in selected_automata:
-        automaton.print_image('images/best-' + str(counter))
-        counter += 1
-
-if __name__ == "__main__":
-    main()
+    # for automaton in selected_automata:
+    #     automaton.print_image('images/test-' + str(counter))
+    #     counter += 1
+    return selected_automata

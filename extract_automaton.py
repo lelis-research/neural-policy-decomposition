@@ -1,6 +1,6 @@
 import copy
 import torch
-
+import numpy as np
 from graphviz import Digraph
 
 device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
@@ -83,7 +83,21 @@ class Automaton:
         partitioner = Partitioner(self._k)
         actions = []
         number_steps = 0
-        x_tensor = torch.tensor(env.observations[0], dtype=torch.float32).view(1, -1)
+        x_tensor = env.observations
+        reward = None
+        terminations = None
+        truncations = None
+        infos = None
+        # print(x_tensor)
+        while len(self._adjacency_list[current_mode]) > 0:
+            current_mode = next(iter(self._adjacency_list[current_mode]))
+            a = current_mode._action
+            actions.append(a)
+            x_tensor, reward, terminations, truncations, infos = env.step(torch.Tensor([a]).cpu().numpy())
+            x_tensor = torch.tensor(x_tensor, dtype=torch.float32).view(1, -1)
+            if True in terminations:
+                return True, actions, x_tensor, reward, terminations, truncations, infos 
+        return True, actions, x_tensor, reward, terminations, truncations, infos 
         while True:
             
             # x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
@@ -104,15 +118,15 @@ class Automaton:
             # if next_mode in self._modes_dict:
             # print('h from mode: ', self._modes_dict[next_mode]._h)
             x_tensor, reward, terminations, truncations, infos = env.step(a.cpu().numpy())
-            x_tensor = torch.tensor(x_tensor[0], dtype=torch.float32).view(1, -1)
+            x_tensor = torch.tensor(x_tensor, dtype=torch.float32).view(1, -1)
             actions.append(a)
 
 
-            if terminations[0]:
+            if env._game.is_over():
                 return True, actions
 
             number_steps += 1
-            if number_steps >= self._max_steps or truncations[0]:
+            if number_steps >= self._max_steps or env._game.is_over():
                 return False, None
         return True, actions
 

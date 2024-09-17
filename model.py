@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from torch import nn
+from torch.optim import lr_scheduler
 
 class CustomRNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
@@ -12,7 +13,8 @@ class CustomRNN(nn.Module):
         self.outsoftmax = nn.Softmax(dim=1)
         self.apply(self._weights_init_xavier)
 
-        self._optimizer = torch.optim.Adam(self.parameters(), lr=0.001, weight_decay=0.0)
+        self._optimizer = torch.optim.Adam(self.parameters(), lr=0.1, weight_decay=0.0)
+        self._scheduler = lr_scheduler.StepLR(self._optimizer, step_size=250, gamma=0.5)
         self._criterion = nn.CrossEntropyLoss()
     
     def _weights_init_xavier(self, m):
@@ -41,7 +43,7 @@ class CustomRNN(nn.Module):
         return torch.zeros(1, self.hidden_size)
     
     def _l1_norm(self, lambda_l1):
-        l1_norm = sum(p.abs().sum() for p in self.parameters())
+        l1_norm = sum(p.abs().sum() for name, p in self.named_parameters() if "bias" not in name)
         return lambda_l1 * l1_norm
     
     def train(self, trajectory):
@@ -58,6 +60,7 @@ class CustomRNN(nn.Module):
             
         step_loss.backward()    
         self._optimizer.step()
+        self._scheduler.step()
 
         return step_loss
 

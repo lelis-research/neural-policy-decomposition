@@ -25,11 +25,11 @@ class Args:
     env_id: str = "ComboGrid-v0"
 
     """the id of the environment"""
-    total_timesteps: int = 7000000
+    total_timesteps: int = 10000000
     """total timesteps of the experiments"""
     learning_rate: float = 2.5e-4
     """the learning rate of the optimizer"""
-    num_envs: int = 8
+    num_envs: int = 1
     """the number of parallel game environments"""
     num_steps: int = 2048
     """the number of steps to run in each environment per policy rollout"""
@@ -39,7 +39,7 @@ class Args:
     """the discount factor gamma"""
     gae_lambda: float = 0.95
     """the lambda for the general advantage estimation"""
-    num_minibatches: int = 4
+    num_minibatches: int = 1
     """the number of mini-batches"""
     update_epochs: int = 4
     """the K epochs to update the policy"""
@@ -61,11 +61,13 @@ class Args:
     """RNN model type"""
     weight_decay: float = 0
     "weight decay for l2 regularization"
-    l1_lambda: float = 0.001
+    l1_lambda: float = 0
     "l1 lambda regularization"
-    hidden_size: int = 64
+    hidden_size: int = 128
     "size of RNN hidden states"
-    problem: str = "BL-TR"
+    problem: str = "test"
+    "Problem"
+    fine_tune: bool = False
 
     # to be filled in runtime
     batch_size: int = 0

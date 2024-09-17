@@ -10,8 +10,22 @@ class Problem:
         self.initial, self.goal = self._parse_problem(problem_str)
 
     def _parse_problem(self, problem_str):
-        initial = self._parse_position(problem_str[:2])
-        goal = self._parse_position(problem_str[3:])
+        if problem_str == "test":
+            if self.rows % 2 == 0 or self.columns % 2 == 0:
+                raise ValueError("Invalid row or column value. Both have to be odd numbers.")
+            center1 = int(self.rows / 2)
+            center2 = int(self.columns / 2)
+            goal = {
+                    (0, center2),
+                    (center1, 0),
+                    (center1, self.columns - 1),
+                    (self.rows - 1, center2),
+                }
+
+            initial = (center1, center2)
+        else:
+            initial = self._parse_position(problem_str[:2])
+            goal = self._parse_position(problem_str[3:])
         return initial, goal
 
     def _parse_position(self, pos_str):
@@ -41,11 +55,12 @@ class Game:
     The (0, 0) in the matrices show top and left and it goes to the bottom and right as 
     the indices increases.
     """
-    def __init__(self, rows, columns, problem_str, partial_observability=True):
+    def __init__(self, rows, columns, problem_str, options=None, partial_observability=True):
         self._rows = rows
         self._columns = columns
         self.last_action = None
         self.partial_obs = partial_observability
+        self.options = options
 
         self.problem = Problem(rows, columns, problem_str)
         
@@ -55,11 +70,14 @@ class Game:
         self._matrix_goal = np.zeros((rows, columns))        
 
         
-        goal = self.problem.goal
+        self.goal = self.problem.goal
         
         self._matrix_unit[self._x][self._y] = 1
-        self._matrix_goal[goal[0]][goal[1]] = 1
-
+        if isinstance(self.goal, tuple):
+            self._matrix_goal[self.goal[0]][self.goal[1]] = 1
+        else:
+            for g in self.goal:
+               self._matrix_goal[g[0]][g[1]] = 1 
         # state of current action sequence
         """
         Mapping used: 
@@ -83,6 +101,7 @@ class Game:
         self._matrix_unit[self._x][self._y] = 1
         self.last_action = None
         self._state = []
+        self.goals_reached = set()
         gc.collect()
 
     def __repr__(self) -> str:
@@ -113,10 +132,15 @@ class Game:
         return np.concatenate((self._matrix_unit.ravel(), one_hot_matrix_state.ravel(), self._matrix_goal.ravel()))
        
     def is_over(self):
+        if isinstance(self.goal, set):
+            return self.goal == self.goals_reached
         return self._matrix_goal[self._x][self._y] == 1
     
     def get_actions(self):
-        return [0, 1, 2]
+        if self.options is not None:
+            return [0, 1, 2] + self.options
+        else:
+            return [0, 1, 2]
    
     def apply_action(self, action):
         """
@@ -157,4 +181,6 @@ class Game:
                         self._matrix_unit[self._x][self._y] = 0
                         self._y += 1
                         self._matrix_unit[self._x][self._y] = 1
+                if isinstance(self.goal, set) and (self._x, self._y) in self.goal and (self._x, self._y) not in self.goals_reached:
+                    self.goals_reached.add((self._x, self._y))
             self._state = []

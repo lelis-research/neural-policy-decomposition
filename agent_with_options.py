@@ -8,39 +8,20 @@ import torch.nn as nn
 import torch.optim as optim
 import tyro
 from torch.utils.tensorboard import SummaryWriter
-
-
-# from stable_baselines3.common.atari_wrappers import (  # isort:skip
-#     ClipRewardEnv,
-#     EpisodicLifeEnv,
-#     FireResetEnv,
-#     MaxAndSkipEnv,
-#     NoopResetEnv,
-# )
-from combo import Game
+import gymnasium as gym
 from combo_gym import ComboGym
-from args import Args
 from model_recurrent import LstmAgent, GruAgent
-    
-def make_env(env_id, idx, capture_video, run_name, problem):
+from args import Args
+from selecting_options import extract_options
+
+
+def make_env(env_id, idx, capture_video, run_name, problem, options):
     def thunk():
-        env = ComboGym(problem=problem)
+        env = ComboGym(problem=problem, options=options)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
     return thunk
-
-# def _l1_norm(model , lambda_l1):
-#     if lambda_l1 == 0:
-#         return 0
-#     l1_norm = sum(p.abs().sum() for p in model.parameters())
-#     return lambda_l1 * l1_norm
-
-# def _l1_norm(model, lambda_l1):
-#     if lambda_l1 == 0:
-#         return 0
-#     l1_norm = sum(p.abs().sum() for name, p in model.named_parameters() if "bias" not in name)
-#     return lambda_l1 * l1_norm  
 
 def _l1_norm(model, lambda_l1):
     l1_loss = 0
@@ -55,7 +36,7 @@ if __name__ == "__main__":
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
-    run_name = f"{args.rnn_type}-{args.hidden_size}-l1_{'{:.0e}'.format(args.l1_lambda)}-l2_{'{:.0e}'.format(args.weight_decay)}-{args.problem}-{args.seed}"
+    run_name = f"{args.rnn_type}-{args.hidden_size}-l1_{'{:.0e}'.format(args.l1_lambda)}-with-options-{args.problem}-{args.seed}"
     print(run_name)
     if args.track:
         import wandb
@@ -84,8 +65,9 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
+    options = extract_options()
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, i, args.capture_video, run_name, args.problem) for i in range(args.num_envs)],
+        [make_env(args.env_id, i, args.capture_video, run_name, args.problem, options) for i in range(args.num_envs)],
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
@@ -152,7 +134,10 @@ if __name__ == "__main__":
             logprobs[step] = logprob
 
             # TRY NOT TO MODIFY: execute the game and log data.
-            next_obs, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
+            if action.item() < 3:
+                next_obs, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
+            else:
+                _, _, next_obs, reward, terminations, truncations, infos = options[action.item()-3].run(envs)
             next_done = np.logical_or(terminations, truncations)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
@@ -160,7 +145,7 @@ if __name__ == "__main__":
             if "final_info" in infos:
                 for info in infos["final_info"]:
                     if info and "episode" in info:
-                        # print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+                        print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                         writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                         writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
 
@@ -283,11 +268,6 @@ if __name__ == "__main__":
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         print("***********************************\n STEP:", global_step)
         print("SPS:", int(global_step / (time.time() - start_time)))
-        print("PG, ENTROPY, VALUE LOSSES: ", pg_loss, entropy_loss, v_loss)
-        
-        for w in agent.gru.weight_ih_l0:
-            print(w)
-        writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
     envs.close()
     writer.close()

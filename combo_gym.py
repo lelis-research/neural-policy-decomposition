@@ -3,8 +3,8 @@ import numpy as np
 from combo import Game
 
 class ComboGym(gym.Env):
-    def __init__(self, rows=3, columns=3, problem="TL-BR", partial_observability=True):
-        self._game = Game(rows, columns, problem, partial_observability)
+    def __init__(self, rows=3, columns=3, problem="TL-BR", options=None, partial_observability=True):
+        self._game = Game(rows, columns, problem, options, partial_observability)
         self._rows = rows
         self._columns = columns
         self._problem = problem
@@ -23,7 +23,7 @@ class ComboGym(gym.Env):
     
     def step(self, action:int):
         trunctuated = False
-        self._game.apply_action(action)
+        self._game.apply_action(int(action))
         self.n_steps += 1
         terminated = self._game.is_over()
         #reward is 0 in goal state and -1 everywhere else

@@ -6,6 +6,10 @@ import numpy as np
 from combo import Game
 from model import CustomRNN, CustomRelu 
 
+def print_learning_rate(optimizer):
+    for i, param_group in enumerate(optimizer.param_groups):
+        print(f"Learning Rate for param group {i}: {param_group['lr']}")
+
 class Trajectory:
     def __init__(self):
         self._sequence = []
@@ -121,10 +125,10 @@ class PolicyGuidedAgent:
         return trajectory
 
 def main():
-    hidden_size = 4
+    hidden_size = 6
     game_width = 3
-    # rnn = CustomRNN(27, 5, 3)
-    rnn = CustomRelu(game_width**2 * 2 + 9, hidden_size, 3)
+    rnn = CustomRNN(21, 6, 3)
+    # rnn = CustomRelu(game_width**2 * 2 + 9, hidden_size, 3)
 
     policy_agent = PolicyGuidedAgent()
 
@@ -137,8 +141,8 @@ def main():
     best_trajectory = None
 
     env = Game(game_width, game_width, problem)
-    for _ in range(150):
-        for _ in range(500):
+    for i in range(300):
+        for _ in range(250):
             env.reset()
             trajectory = policy_agent.run(env, rnn, length_cap=shortest_trajectory_length, verbose=False)
 
@@ -146,7 +150,8 @@ def main():
                 shortest_trajectory_length = len(trajectory.get_trajectory())
                 best_trajectory = trajectory
 
-        print('Trajectory length: ', len(best_trajectory.get_trajectory()))
+        print('i: Trajectory length: ', i, len(best_trajectory.get_trajectory()))
+        print_learning_rate(rnn._optimizer)
         for _ in range(10):
             loss = rnn.train(best_trajectory)
             print(loss)
@@ -154,13 +159,13 @@ def main():
 
     policy_agent._epsilon = 0.0
     env.reset()
-    policy_agent.run(env, rnn, greedy=True, length_cap=None, verbose=True)
+    policy_agent.run(env, rnn, greedy=True, length_cap=20, verbose=True)
     rnn.print_weights()
 
-    env.reset()
-    policy_agent.run_with_relu_state(env, rnn)
+    # env.reset()
+    # policy_agent.run_with_relu_state(env, rnn)
 
-    torch.save(rnn.state_dict(), 'binary/game-width' + str(game_width) + '-' + problem + '-relu-' + str(hidden_size) + '-model.pth')
+    torch.save(rnn.state_dict(), 'binary/game-width' + str(game_width) + '-' + problem + '-rnn-' + str(hidden_size) + '-model.pth')
 
 if __name__ == "__main__":
     main()
