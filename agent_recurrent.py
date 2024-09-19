@@ -160,7 +160,7 @@ if __name__ == "__main__":
             if "final_info" in infos:
                 for info in infos["final_info"]:
                     if info and "episode" in info:
-                        # print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+                        print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                         writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                         writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
 
@@ -283,10 +283,6 @@ if __name__ == "__main__":
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         print("***********************************\n STEP:", global_step)
         print("SPS:", int(global_step / (time.time() - start_time)))
-        print("PG, ENTROPY, VALUE LOSSES: ", pg_loss, entropy_loss, v_loss)
-        
-        for w in agent.gru.weight_ih_l0:
-            print(w)
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
     envs.close()
