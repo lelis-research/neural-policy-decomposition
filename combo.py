@@ -122,7 +122,7 @@ class Game:
     def get_observation(self):
         if self.partial_obs:
             one_hot_matrix_state = np.zeros((3), dtype=int)
-            if self.last_action:
+            if self.last_action is not None:
                 one_hot_matrix_state[self.last_action] = 1
         else:
             one_hot_matrix_state = np.zeros((self._pattern_length, self._pattern_length), dtype=int)

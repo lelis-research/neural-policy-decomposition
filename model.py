@@ -8,13 +8,13 @@ class CustomRNN(nn.Module):
         super(CustomRNN, self).__init__()
         self.hidden_size = hidden_size
         self.in2hidden = nn.Linear(input_size + hidden_size, hidden_size)
-        self.in2output = nn.Linear(input_size + hidden_size, hidden_size)
-        self.in3output = nn.Linear(hidden_size, output_size)
+        self.in2output = nn.Linear(input_size + hidden_size, 2)
+        self.in3output = nn.Linear(2, output_size)
         self.outsoftmax = nn.Softmax(dim=1)
         self.apply(self._weights_init_xavier)
 
-        self._optimizer = torch.optim.Adam(self.parameters(), lr=0.1, weight_decay=0.0)
-        self._scheduler = lr_scheduler.StepLR(self._optimizer, step_size=250, gamma=0.5)
+        self._optimizer = torch.optim.Adam(self.parameters(), lr=0.001, weight_decay=0.0)
+        self._scheduler = lr_scheduler.StepLR(self._optimizer, step_size=50000, gamma=0.5)
         self._criterion = nn.CrossEntropyLoss()
     
     def _weights_init_xavier(self, m):
@@ -32,10 +32,45 @@ class CustomRNN(nn.Module):
 
     def forward(self, x, hidden_state):
         combined = torch.cat((x, hidden_state), 1)
-        hidden = torch.tanh(self.in2hidden(combined))
-        output_1 = torch.tanh(self.in2output(combined))
-        output_2 = self.in3output(output_1)
-        output = self.outsoftmax(output_2)
+        hidden = torch.relu(self.in2hidden(combined))
+        combined_2 = torch.cat((x, hidden), 1)
+        output_2 = torch.relu(self.in2output(combined_2))
+        output_3 = self.in3output(output_2)
+        output = self.outsoftmax(output_3)
+
+        return output, hidden
+    
+    
+    def masked_neuron_operation(self, logits, mask):
+        """
+        Apply a mask to neuron outputs in a layer.
+
+        Parameters:
+            x (torch.Tensor): The pre-activation outputs (linear outputs) from neurons.
+            mask (torch.Tensor): The mask controlling the operation, where:
+                                1 = pass the linear input
+                                0 = pass zero,
+                                -1 = compute tanh as usual (part of the program).
+
+        Returns:
+            torch.Tensor: The post-masked outputs of the neurons.
+        """
+        tanh_out = torch.relu(logits)
+        output = torch.zeros_like(logits)
+        output[mask == -1] = tanh_out[mask == -1]
+        output[mask == 1] = logits[mask == 1]
+
+        return output
+
+    def masked_forward(self, x, hidden_state, mask, mask2):
+        combined = torch.cat((x, hidden_state), 1)
+        hidden_logits = self.in2hidden(combined)
+        hidden = self.masked_neuron_operation(hidden_logits, mask)
+        combined_2 = torch.cat((x, hidden), 1)
+        output_2 = self.in2output(combined_2)
+        output_2_mask = self.masked_neuron_operation(output_2, mask2)
+        output_3 = self.in3output(output_2_mask)
+        output = self.outsoftmax(output_3)
 
         return output, hidden
     

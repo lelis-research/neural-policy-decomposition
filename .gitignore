@@ -2,6 +2,8 @@ envs
 __pycache__/*
 *.out
 *.pth
+*.txt
+*.npy
 binary
 outputs
 images/*
