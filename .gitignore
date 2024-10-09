@@ -6,7 +6,6 @@ binary
 outputs
 *.out
 tmp.py
-scripts
 __pycache__/*
 outputs
 logs*

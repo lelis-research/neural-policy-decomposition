@@ -3,15 +3,16 @@ import random
 import torch
 import numpy as np
 from tqdm import tqdm
+from typing import Union
+import matplotlib.pyplot as plt
 
 import torch.nn as nn
-from environments_combogrid_gym import ComboGym
+from environemnts.environments_combogrid_gym import ComboGym
+from environemnts.environments_minigrid import MiniGridWrap
 from gymnasium.vector import SyncVectorEnv
-from environments_combogrid import Game
 from torch.distributions.categorical import Categorical
-from models.models_mlp import CustomRNN, CustomRelu 
-from utils.utils import timing_decorator
-from trajectory import Trajectory
+from models.models_mlp import CustomRNN 
+from agents.trajectory import Trajectory
 
 class PolicyGuidedAgent:
     def __init__(self):
@@ -117,9 +118,14 @@ class PPOAgent(nn.Module):
         if isinstance(envs, ComboGym):
             observation_space_size = envs.get_observation_space()
             action_space_size = envs.get_action_space()
+        elif isinstance(envs, MiniGridWrap):
+            observation_space_size = envs.get_observation_space()
+            action_space_size = envs.get_action_space()
         elif isinstance(envs, SyncVectorEnv):
             observation_space_size = envs.observation_space.shape[1]
             action_space_size = envs.action_space[0].n.item()
+        else:
+            raise NotImplementedError
 
         print(observation_space_size, action_space_size)
         self.critic = nn.Sequential(
@@ -136,7 +142,6 @@ class PPOAgent(nn.Module):
         )
         self.mask = None
         
-
     def get_value(self, x):
         return self.critic(x)
 
@@ -145,10 +150,11 @@ class PPOAgent(nn.Module):
         probs = Categorical(logits=logits)
         if action is None:
             action = probs.sample()
-        return action, probs.log_prob(action), probs.entropy(), self.critic(x)
+        return action, probs.log_prob(action), probs.entropy(), self.critic(x), logits
     
-    def set_mask(self, mask):
+    def to_option(self, mask, option_size):
         self.mask = mask
+        self.option_size = option_size
 
     def _masked_neuron_operation(self, logits, mask):
         """
@@ -185,27 +191,35 @@ class PPOAgent(nn.Module):
         
         return probs
 
-    def run(self, env: ComboGym, length_cap=None, verbose=False):
+    def run(self, env: Union[ComboGym, MiniGridWrap], length_cap=None, verbose=False):
 
         trajectory = Trajectory()
         current_length = 0
         self.actor.requires_grad = False
 
+        o, _ = env.reset()
+        
+        done = False
+
         if verbose: print('Beginning Trajectory')
-        while not env.is_over():
-            o = torch.Tensor(env.get_observation())
-            a, _, _, _ = self.get_action_and_value(o)
-            trajectory.add_pair(copy.deepcopy(env), a.item())
+        while not done:
+            o = torch.tensor(o, dtype=torch.float32)
+            a, _, _, _, logits = self.get_action_and_value(o)
+            trajectory.add_pair(copy.deepcopy(env), a.item(), logits)
 
             if verbose:
                 print(env, a)
+                print(env.env.agent_pos, env.goal_position, env.is_over())
                 print()
 
-            env.step(a.item())
-
+            next_o, _, terminal, truncated, _ = env.step(a.item())
+            
             current_length += 1
-            if length_cap is not None and current_length > length_cap:
-                break        
+            if (length_cap is not None and current_length > length_cap) or \
+                terminal or truncated:
+                done = True     
+
+            o = next_o   
         
         self._h = None
         if verbose: print("End Trajectory \n\n")
