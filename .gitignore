@@ -9,6 +9,8 @@ outputs
 images/*
 runs/*
 models/*
+masked data/*
+text files/*
 test.py
 runnables/*
 dataset.pkl
