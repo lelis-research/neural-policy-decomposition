@@ -1,7 +1,6 @@
 import torch
 import numpy as np
 from torch import nn
-from torch.optim import lr_scheduler
 
 class CustomRNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
@@ -9,12 +8,11 @@ class CustomRNN(nn.Module):
         self.hidden_size = hidden_size
         self.in2hidden = nn.Linear(input_size + hidden_size, hidden_size)
         self.in2output = nn.Linear(input_size + hidden_size, 2)
-        self.in3output = nn.Linear(2, output_size)
+        self.inoutput = nn.Linear(2, output_size)
         self.outsoftmax = nn.Softmax(dim=1)
         self.apply(self._weights_init_xavier)
 
         self._optimizer = torch.optim.Adam(self.parameters(), lr=0.001, weight_decay=0.0)
-        self._scheduler = lr_scheduler.StepLR(self._optimizer, step_size=50000, gamma=0.5)
         self._criterion = nn.CrossEntropyLoss()
     
     def _weights_init_xavier(self, m):
@@ -35,7 +33,7 @@ class CustomRNN(nn.Module):
         hidden = torch.relu(self.in2hidden(combined))
         combined_2 = torch.cat((x, hidden), 1)
         output_2 = torch.relu(self.in2output(combined_2))
-        output_3 = self.in3output(output_2)
+        output_3 = self.inoutput(output_2)
         output = self.outsoftmax(output_3)
 
         return output, hidden
@@ -57,6 +55,7 @@ class CustomRNN(nn.Module):
         """
         tanh_out = torch.relu(logits)
         output = torch.zeros_like(logits)
+        # print(mask)
         output[mask == -1] = tanh_out[mask == -1]
         output[mask == 1] = logits[mask == 1]
 
@@ -69,7 +68,7 @@ class CustomRNN(nn.Module):
         combined_2 = torch.cat((x, hidden), 1)
         output_2 = self.in2output(combined_2)
         output_2_mask = self.masked_neuron_operation(output_2, mask2)
-        output_3 = self.in3output(output_2_mask)
+        output_3 = self.inoutput(output_2_mask)
         output = self.outsoftmax(output_3)
 
         return output, hidden
@@ -91,11 +90,10 @@ class CustomRNN(nn.Module):
             
             output, h = self(x_tensor, h)
             step_loss += self._criterion(output, y_tensor)
-            step_loss += self._l1_norm(0.01)
+            step_loss += self._l1_norm(0)
             
         step_loss.backward()    
         self._optimizer.step()
-        self._scheduler.step()
 
         return step_loss
 

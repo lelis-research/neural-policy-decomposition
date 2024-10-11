@@ -6,10 +6,6 @@ import numpy as np
 from combo import Game
 from model import CustomRNN, CustomRelu 
 
-def print_learning_rate(optimizer):
-    for i, param_group in enumerate(optimizer.param_groups):
-        print(f"Learning Rate for param group {i}: {param_group['lr']}")
-
 class Trajectory:
     def __init__(self):
         self._sequence = []
@@ -66,11 +62,13 @@ class PolicyGuidedAgent:
 
         trajectory = Trajectory()
         current_length = 0
-
+        hidden_states = []
+        hidden_states.append(model.init_hidden())
         if verbose: print('Beginning Trajectory')
         while not env.is_over():
             a = self.choose_action(env, model, greedy, verbose)
             trajectory.add_pair(copy.deepcopy(env), a)
+            hidden_states.append(self._h)
 
             if verbose:
                 print(env, a)
@@ -84,7 +82,7 @@ class PolicyGuidedAgent:
         
         self._h = None
         if verbose: print("End Trajectory \n\n")
-        return trajectory
+        return trajectory, hidden_states
 
     def run_with_relu_state(self, env, model):
         trajectory = Trajectory()
@@ -125,16 +123,16 @@ class PolicyGuidedAgent:
         return trajectory
 
 def main():
-    hidden_size = 6
+    hidden_size = 4
     game_width = 3
-    rnn = CustomRNN(21, 6, 3)
+    rnn = CustomRNN(21, 4, 3)
     # rnn = CustomRelu(game_width**2 * 2 + 9, hidden_size, 3)
 
     policy_agent = PolicyGuidedAgent()
 
-    # problem = "TL-BR"
+    problem = "TL-BR"
     # problem = "TR-BL"
-    problem = "BR-TL"
+    # problem = "BR-TL"
     # problem = "BL-TR"
 
     shortest_trajectory_length = np.inf
@@ -142,17 +140,16 @@ def main():
 
     env = Game(game_width, game_width, problem)
     for i in range(300):
-        for _ in range(250):
+        for _ in range(500):
             env.reset()
-            trajectory = policy_agent.run(env, rnn, length_cap=shortest_trajectory_length, verbose=False)
+            trajectory, _ = policy_agent.run(env, rnn, length_cap=shortest_trajectory_length, verbose=False)
 
             if len(trajectory.get_trajectory()) < shortest_trajectory_length:
                 shortest_trajectory_length = len(trajectory.get_trajectory())
                 best_trajectory = trajectory
 
         print('i: Trajectory length: ', i, len(best_trajectory.get_trajectory()))
-        print_learning_rate(rnn._optimizer)
-        for _ in range(10):
+        for _ in range(20):
             loss = rnn.train(best_trajectory)
             print(loss)
         print()
@@ -165,7 +162,7 @@ def main():
     # env.reset()
     # policy_agent.run_with_relu_state(env, rnn)
 
-    torch.save(rnn.state_dict(), 'binary/game-width' + str(game_width) + '-' + problem + '-rnn-' + str(hidden_size) + '-model.pth')
+    torch.save(rnn.state_dict(), 'binary/game-width' + str(game_width) + '-' + problem + '-noreg-' + str(hidden_size) + '-2-model.pth')
 
 if __name__ == "__main__":
     main()
