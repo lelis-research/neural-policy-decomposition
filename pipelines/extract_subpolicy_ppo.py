@@ -303,29 +303,17 @@ def hill_climbing(
     best_overall = None
     best_n_iterations = None
     best_value_overall = None
-    # loss = LogitsLossActorCritic(logger)
-    # loss = LevinLossActorCritic(logger)
     default_loss = loss.compute_loss(masks, selected_models_of_masks, problem, trajectories, number_actions, number_steps=selected_options_n_iterations)
 
     
     for number_iterations in number_iterations_ls:
         n_applicable = [0] * (args.number_restarts + 1)
 
-        # Use ProcessPoolExecutor to run the hill climbing iterations in parallel
-        with concurrent.futures.ProcessPoolExecutor(max_workers=args.cpus) as executor:
-            # Submit tasks to the executor with all required arguments
-            futures = [
-                executor.submit(
-                    hill_climbing_iter, i, args, mask_values, masks, selected_models_of_masks,
-                    model, problem, trajectories, number_actions, selected_options_n_iterations,
-                    number_iterations, default_loss, loss
-                )
-                for i in range(args.number_restarts + 1)
-            ]
-
-            # Process the results as they complete
-            for future in concurrent.futures.as_completed(futures):
-                i, best_value, best_mask, init_mask, n_steps, applicable = future.result()
+        if args.cpus == 1: 
+            for i in range(args.number_restarts + 1):
+                _, best_value, best_mask, init_mask, n_steps, applicable = hill_climbing_iter(i, args, mask_values, masks, selected_models_of_masks,
+                        model, problem, trajectories, number_actions, selected_options_n_iterations,
+                        number_iterations, default_loss, loss)
 
                 if applicable:
                     n_applicable[i] = 1
@@ -338,6 +326,39 @@ def hill_climbing(
 
                     logger.info(f'iteration {i}, Best Mask Overall: {best_overall}, Best Loss: {best_value_overall}, Best number of iterations: {best_n_iterations}')
                     logger.info(f'iteration {i}, {n_steps} steps taken.\n Starting mask: {init_mask}\n Resulted Mask: {best_mask}')
+        
+        else:
+            # Use ProcessPoolExecutor to run the hill climbing iterations in parallel
+            with concurrent.futures.ThreadPoolExecutor(max_workers=args.cpus) as executor:
+                # Submit tasks to the executor with all required arguments
+                futures = [
+                    executor.submit(
+                        hill_climbing_iter, i, args, mask_values, masks, selected_models_of_masks,
+                        model, problem, trajectories, number_actions, selected_options_n_iterations,
+                        number_iterations, default_loss, loss
+                    )
+                    for i in range(args.number_restarts + 1)
+                ]
+
+                # Process the results as they complete
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        i, best_value, best_mask, init_mask, n_steps, applicable = future.result()
+
+                        if applicable:
+                            n_applicable[i] = 1
+                        if i == args.number_restarts:
+                            logger.info(f'iteration {i}, Resulting Mask from the original Model: {best_mask}, Loss: {best_value}, using {number_iterations} iterations.')
+                        if best_overall is None or best_value < best_value_overall:
+                            best_overall = copy.deepcopy(best_mask)
+                            best_value_overall = best_value
+                            best_n_iterations = number_iterations
+
+                            logger.info(f'iteration {i}, Best Mask Overall: {best_overall}, Best Loss: {best_value_overall}, Best number of iterations: {best_n_iterations}')
+                            logger.info(f'iteration {i}, {n_steps} steps taken.\n Starting mask: {init_mask}\n Resulted Mask: {best_mask}')
+
+                    except Exception as exc:
+                        logger.error(f'iteration {i} generated an exception: {exc}')
 
         
         logger.info(f'Out of {args.number_restarts}, {sum(n_applicable)} found applicable options with {number_iterations} iterations.')
