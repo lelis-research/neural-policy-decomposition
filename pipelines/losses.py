@@ -309,28 +309,28 @@ class LogitsLossActorCritic(LevinLossActorCritic):
 
                             # l = torch.sum(-F.softmax(target_logits, dim=-1) * F.log_softmax(logits, dim=-1))
 
-                            self.logger.info(f"cross entropy sample loss: {l}")
+                            # self.logger.info(f"cross entropy sample loss: {l}")
                             losses_dist[number_steps[i]].append(l.item())
 
                             loss += l / n_actions
                         
-                        self.logger.info(f"average loss: {loss}")
+                        # self.logger.info(f"average loss: {loss}")
                         # n_steps = int(1 + loss/cross_entropy_clip_coef * (n_actions - 1))
                         n_steps = int(1 + loss * (n_actions - 1))
                         steps_dist[number_steps[i]].append(n_steps)
-                        self.logger.info(f"n_steps: {n_steps}")
+                        # self.logger.info(f"n_steps: {n_steps}")
                         M[j + n_actions] = min(M[j + n_actions], M[j] + n_steps)
-                        utils.logger_flush(self.logger)
-                    else:
-                        self.logger.info(f"Not applicable: {actions}!={[val[1] for val in t[j:j+len(actions)]]}, {len(t)}, {j}")
+                        # utils.logger_flush(self.logger)
+                    # else:
+                        # self.logger.info(f"Not applicable: {actions}!={[val[1] for val in t[j:j+len(actions)]]}, {len(t)}, {j}")
         uniform_probability = (1/(len(masks) + number_actions)) 
         depth = len(t) + 1
         number_decisions = M[len(t)]
 
         # Monitoring some probability properties of the loss function
-        for i in number_steps:
-            self.logger.info(f"\n Max steps {i}: Logits Loss Distribution: {Series(losses_dist[i], dtype=np.float64).describe()}")
-            self.logger.info(f"\n Max steps {i}: Steps Distribution: {Series(steps_dist[i], dtype=np.float64).describe()}")
+        # for i in number_steps:
+        #     self.logger.info(f"\n Max steps {i}: Logits Loss Distribution: {Series(losses_dist[i], dtype=np.float64).describe()}")
+        #     self.logger.info(f"\n Max steps {i}: Steps Distribution: {Series(steps_dist[i], dtype=np.float64).describe()}")
 
         # use the Levin loss in log space to avoid numerical issues
         log_depth = math.log(depth)

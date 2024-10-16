@@ -315,6 +315,7 @@ def hill_climbing(
                         model, problem, trajectories, number_actions, selected_options_n_iterations,
                         number_iterations, default_loss, loss)
 
+                logger.info(f'option length {number_iterations}, restart #{i}')
                 if applicable:
                     n_applicable[i] = 1
                 if i == args.number_restarts:

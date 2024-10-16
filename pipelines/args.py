@@ -27,7 +27,7 @@ class Args:
     """"""
     option_length: int = 3
     """number of while loops for applying the option"""
-    number_restarts: int = 1000
+    number_restarts: int = 400
     """number of hill climbing restarts for finding one option"""
     
     # Retraining specific arguments
