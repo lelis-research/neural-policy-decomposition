@@ -13,6 +13,21 @@ class Trajectory:
     def concat(self, other):
         self._sequence = self._sequence + copy.deepcopy(other._sequence)
         self.logits = self.logits + copy.deepcopy(other.logits)
+
+    def slice(self, start, stop=None, n=None):
+        if stop:
+            end = stop
+        elif n:
+            end = start + n
+        else:
+            end = len(self._sequence)
+        new = copy.deepcopy(self)
+        new._sequence = self._sequence[start:end]
+        new.logits = self.logits[start:end]
+        return new
+
+    def get_length(self):
+        return len(self._sequence)
     
     def get_trajectory(self):
         return self._sequence
