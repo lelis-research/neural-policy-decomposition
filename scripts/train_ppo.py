@@ -17,9 +17,10 @@ def main(args):
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
-    args.exp_name = f"{args.learning_rate}"
+    args.exp_name += f"{args.learning_rate}"
     
-    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}_" + args.exp_name 
+    args.log_path += "_" + args.exp_name
 
     logger = utils.get_logger('ppo_trainer_logger_' + str(args.seed) + "_" + args.exp_name, args.log_level, args.log_path)
 
@@ -75,7 +76,8 @@ def main(args):
                         f'-h{args.hidden_size}-lr{args.learning_rate}-sd{seed}_MODEL.pt'
         envs = gym.vector.SyncVectorEnv( 
             [make_env_simple_crossing(view_size=game_width, seed=seed) for _ in range(args.num_envs)])
-    elif args.env_id == "ComboGrid":
+    elif "ComboGrid" in args.env_id:
+        problem = args.env_id[len("ComboGrid_"):]
         model_file_name = f'binary/PPO-{problem}-gw{game_width}-h{hidden_size}-l1l{l1_lambda}_MODEL.pt'
         envs = gym.vector.SyncVectorEnv(
             [make_env(rows=game_width, columns=game_width, problem=problem) for _ in range(args.num_envs)],

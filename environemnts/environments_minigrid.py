@@ -51,7 +51,7 @@ class MiniGridWrap(gym.Env):
         return np.array(one_hot).flatten()
 
     def get_observation(self):
-        obs = self.env.gen_obs()
+        obs = self.env.unwrapped.gen_obs()
         image = self.one_hot_encode(self.env.observation(obs)['image'][:,:,0].flatten())
         if self.show_direction:
             return np.concatenate((
@@ -63,7 +63,7 @@ class MiniGridWrap(gym.Env):
 
     def take_basic_action(self, action):
         _, reward, terminal, truncated, _ = self.env.step(action)
-        self.agent_pos = self.env.agent_pos
+        self.agent_pos = self.env.unwrapped.agent_pos
         self.steps += 1
         if terminal:
             reward = 1
@@ -99,21 +99,21 @@ class MiniGridWrap(gym.Env):
             self.seed_ = seed
         self.env.reset(seed=self.seed_)
         self.goal_position = [
-            x for x, y in enumerate(self.env.grid.grid) if isinstance(y, Goal)
+            x for x, y in enumerate(self.env.unwrapped.grid.grid) if isinstance(y, Goal)
         ]
         self.goal_position = (
-            int(self.goal_position[0] / self.env.height),
-            self.goal_position[0] % self.env.width,
+            int(self.goal_position[0] / self.env.unwrapped.height),
+            self.goal_position[0] % self.env.unwrapped.width,
         )
         if init_loc and init_dir:
-            self.env.agent_pos = np.array(init_loc)
-            self.env.dir_init = self._dir_to_numeric(init_dir)
-        self.agent_pos = self.env.agent_pos
+            self.env.unwrapped.agent_pos = np.array(init_loc)
+            self.env.unwrapped.dir_init = self._dir_to_numeric(init_dir)
+        self.agent_pos = self.env.unwrapped.agent_pos
         return self.get_observation(), {}
 
     def is_over(self, loc: tuple=None):
         if loc is None:
-            loc = tuple(self.env.agent_pos)
+            loc = tuple(self.env.unwrapped.agent_pos)
         return loc == self.goal_position
 
     def render(self):

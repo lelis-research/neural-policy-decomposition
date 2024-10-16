@@ -189,7 +189,7 @@ class PPOAgent(nn.Module):
 
         probs = Categorical(logits=output_logits).probs
         
-        return probs
+        return probs, output_logits
 
     def run(self, env: Union[ComboGym, MiniGridWrap], length_cap=None, verbose=False):
 
@@ -243,9 +243,9 @@ class PPOAgent(nn.Module):
         return trajectory
     
     def get_action_with_mask(self, x_tensor, mask=None):
-        prob_actions = self._masked_forward(x_tensor, mask)
+        prob_actions, logits = self._masked_forward(x_tensor, mask)
         a = torch.argmax(prob_actions).item()
-        return a
+        return a, logits
     
     def run_with_mask(self, env, mask, max_size_sequence):
         trajectory = Trajectory()
@@ -254,9 +254,9 @@ class PPOAgent(nn.Module):
         while not env.is_over():
             x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
 
-            a = self.get_action_with_mask(x_tensor, mask)
+            a, logits = self.get_action_with_mask(x_tensor, mask)
             
-            trajectory.add_pair(copy.deepcopy(env), a)
+            trajectory.add_pair(copy.deepcopy(env), a, logits=logits[0])
             env.step(a)
 
             length += 1

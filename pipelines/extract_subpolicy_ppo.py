@@ -10,9 +10,10 @@ import numpy as np
 import gymnasium as gym
 from typing import Tuple
 from utils import utils
+import concurrent.futures
 from dataclasses import dataclass
-from args import Args
-from losses import LevinLossActorCritic
+from pipelines.args import Args
+from pipelines.losses import LevinLossActorCritic, LogitsLossActorCritic
 from agents.policy_guided_agent import PPOAgent
 from environemnts.environments_combogrid_gym import ComboGym, make_env
 from environemnts.environments_minigrid import make_env_four_rooms
@@ -191,8 +192,104 @@ def evaluate_all_masks_levin_loss():
         print("Testing...", problem)
         loss.evaluate_on_each_cell(selected_models_of_masks, selected_masks, problem, game_width)
 
+def hill_climbing_iter(
+    i, 
+    args, 
+    values, 
+    masks, 
+    selected_models_of_masks, 
+    model, 
+    problem, 
+    trajectories, 
+    number_actions, 
+    selected_options_n_iterations, 
+    number_iterations, 
+    default_loss, 
+    loss
+):
+    # Initialize the value depending on whether it's the last restart or not
+    if i == args.number_restarts:
+        value = [-1 for _ in range(args.hidden_size)]
+    else:
+        value = random.choices(values, k=args.hidden_size)
+    
+    # Initialize the current mask
+    current_mask = torch.tensor(value, dtype=torch.int8).view(1, -1)
+    init_mask = current_mask
+    applicable = False
 
-def hill_climbing(masks, selected_models_of_masks, selected_options_n_iterations, model, problem, trajectories, number_actions, number_iterations_ls, number_restarts, hidden_size, logger):
+    # Compute initial loss
+    best_value = loss.compute_loss(
+        masks + [current_mask], 
+        selected_models_of_masks + [model], 
+        problem, 
+        trajectories, 
+        number_actions, 
+        number_steps=selected_options_n_iterations + [number_iterations]
+    )
+
+    # Check against default loss
+    if best_value < default_loss:
+        applicable = True
+
+    n_steps = 0
+    while True:
+        made_progress = False
+        # Iterate through each element of the current mask
+        for j in range(len(current_mask[0])):
+            modifiable_current_mask = copy.deepcopy(current_mask)
+            # Try each possible value for the current position
+            for v in values:
+                if v == current_mask[0][j]:
+                    continue
+                
+                modifiable_current_mask[0][j] = v
+                eval_value = loss.compute_loss(
+                    masks + [modifiable_current_mask], 
+                    selected_models_of_masks + [model], 
+                    problem, 
+                    trajectories, 
+                    number_actions, 
+                    number_steps=selected_options_n_iterations + [number_iterations]
+                )
+
+                if eval_value < default_loss:
+                    applicable = True
+
+                # Update the best value and mask if improvement is found
+                if 'best_mask' not in locals() or eval_value < best_value:
+                    best_value = eval_value
+                    best_mask = copy.deepcopy(modifiable_current_mask)
+                    made_progress = True
+
+            # Update current mask to the best found so far
+            current_mask = copy.deepcopy(best_mask)
+
+        # Break the loop if no progress was made in the current iteration
+        if not made_progress:
+            break
+
+        n_steps += 1
+
+    # Optional logging (uncomment if needed)
+    # logger.info(f"#{i}: {n_steps} steps taken. For option length {number_iterations}")
+
+    # Optionally return the best mask and the best value if needed
+    return best_value, current_mask, init_mask, n_steps, applicable
+            
+
+def hill_climbing(
+        masks: List, 
+        selected_models_of_masks: List, 
+        selected_options_n_iterations: List, 
+        model: PPOAgent, 
+        problem: str, 
+        trajectories: dict, 
+        loss: LevinLossActorCritic, 
+        number_actions: int, 
+        number_iterations_ls: List, 
+        args: Args, 
+        logger):
     """
     Performs Hill Climbing in the mask space for a given agent. Note that when computing the loss of a mask (option), 
     we pass the name of the problem in which the mask is used. That way, we do not evaluate an option on the problem in 
@@ -202,48 +299,47 @@ def hill_climbing(masks, selected_models_of_masks, selected_options_n_iterations
     a mask that better optimizes the Levin loss. 
     """
     best_mask = None
-    values = [-1, 0, 1]
+    mask_values = [-1, 0, 1]
     best_overall = None
     best_n_iterations = None
     best_value_overall = None
-    loss = LevinLossActorCritic()
+    # loss = LogitsLossActorCritic(logger)
+    # loss = LevinLossActorCritic(logger)
+    default_loss = loss.compute_loss(masks, selected_models_of_masks, problem, trajectories, number_actions, number_steps=selected_options_n_iterations)
 
+    
     for number_iterations in number_iterations_ls:
-        for i in range(number_restarts + 1):
-            # if i == number_restarts:
-            #     value = list(range(hidden_size))
-            #     logger.info("Starting the search with the original model")        
-            value = random.choices(values, k=hidden_size)
-            current_mask = torch.tensor(value, dtype=torch.int8).view(1, -1)
-            init_mask = current_mask
+        n_applicable = [0] * (args.number_restarts + 1)
 
-            best_value = loss.compute_loss(masks + [current_mask], selected_models_of_masks + [model], problem, trajectories, number_actions, number_steps=selected_options_n_iterations + [number_iterations])
+        # Define a function to execute hill climbing for a given `i`
+        def run_hill_climbing_iter(i):
+            best_value, best_mask, init_mask, n_steps, applicable = hill_climbing_iter(
+                i=i,
+                args=args,
+                values=mask_values,
+                masks=masks,
+                selected_models_of_masks=selected_models_of_masks,
+                model=model,
+                problem=problem,
+                trajectories=trajectories,
+                number_actions=number_actions,
+                selected_options_n_iterations=selected_options_n_iterations,
+                number_iterations=number_iterations,
+                default_loss=default_loss,
+                loss=loss
+            )
+            return i, best_value, best_mask, init_mask, n_steps, applicable
 
-            n_steps = 0
-            while True:
-                made_progress = False
-                for j in range(len(current_mask)):
-                    modifiable_current_mask = copy.deepcopy(current_mask)
-                    for v in values:
-                        if v == current_mask[0][j]:
-                            continue
-                        modifiable_current_mask[0][j] = v
-                        eval_value = loss.compute_loss(masks + [modifiable_current_mask], selected_models_of_masks + [model], problem, trajectories, number_actions, number_steps=selected_options_n_iterations + [number_iterations])
+        # Use ProcessPoolExecutor to run the hill climbing iterations in parallel
+        with concurrent.futures.ProcessPoolExecutor(max_workers=args.cpus) as executor:
+            # Map the function across the range of restarts
+            results = executor.map(run_hill_climbing_iter, range(args.number_restarts + 1))
 
-                        if best_mask is None or eval_value < best_value:
-                            best_value = eval_value
-                            best_mask = copy.deepcopy(modifiable_current_mask)
-
-                            made_progress = True
-
-                    current_mask = copy.deepcopy(best_mask)
-
-                if not made_progress:
-                    break
-                n_steps += 1
-            # logger.info(f"#{i}: {n_steps} steps taken. For option length {number_iterations}")
-
-            if i == number_restarts:
+        # Process the results
+        for i, best_value, best_mask, init_mask, n_steps, applicable in results:
+            if applicable:
+                n_applicable[i] = 1
+            if i == args.number_restarts:
                 logger.info(f'Resulting Mask from the original Model: {best_mask}, Loss: {best_value}, using {number_iterations} iterations.')
             if best_overall is None or best_value < best_value_overall:
                 best_overall = copy.deepcopy(best_mask)
@@ -252,6 +348,9 @@ def hill_climbing(masks, selected_models_of_masks, selected_options_n_iterations
 
                 logger.info(f'Best Mask Overall: {best_overall}, Best Loss: {best_value_overall}, Best number of iterations: {best_n_iterations}')
                 logger.info(f'{n_steps} steps taken.\n Starting mask: {init_mask}\n Resulted Mask: {best_mask}')
+        
+        logger.info(f'Out of {args.number_restarts}, {sum(n_applicable)} found applicable options with {number_iterations} iterations.')
+    
     return best_overall, best_value_overall, best_n_iterations
 
 
@@ -262,13 +361,12 @@ def hill_climbing_mask_space_training_data_levin_loss():
     to minimize the Levin loss of a given data set. 
     """
     args = tyro.cli(Args)
+    args.log_path += "_" + args.exp_name
     
     # Logger configurations
     logger = utils.get_logger('hill_climbing_logger', args.log_level, args.log_path)
 
-    hidden_size = args.hidden_size
-    # option_length = args.option_length
-    option_length = list(range(2,5))
+    hidden_size = args.hidden_size    
     game_width = args.game_width
     number_restarts = args.number_restarts
     number_actions = 3
@@ -281,13 +379,17 @@ def hill_climbing_mask_space_training_data_levin_loss():
         seeds = list(range(start, end + 1))
     else:
         raise NotImplementedError
-        
+    
     if args.env_id == "ComboGrid":
         problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
         seeds = seeds * (len(problems)//len(seeds) + 1)
         seeds = seeds[:len(problems)]
     elif args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
         problems = [args.env_id + str(seed) for seed in seeds]
+
+    trajectories = load_trajectories(problems, args, seeds=seeds, verbose=True, logger=logger)
+    max_length = max([len(t.get_trajectory()) for t in trajectories.values()])
+    option_length = list(range(2, max_length + 1))
 
     params = {
         'hidden_size': hidden_size,
@@ -303,13 +405,13 @@ def hill_climbing_mask_space_training_data_levin_loss():
     for key, value in params.items():
         logger.info(f"{key}: {value}")
 
-    trajectories = load_trajectories(problems, args, seeds=seeds, verbose=True, logger=logger)
     utils.logger_flush(logger)
 
     previous_loss = None
     best_loss = None
 
-    loss = LevinLossActorCritic()
+    loss = LogitsLossActorCritic(logger)
+    # loss = LevinLossActorCritic(logger)
 
     selected_masks = []
     selected_options_n_iterations = []
@@ -339,7 +441,17 @@ def hill_climbing_mask_space_training_data_levin_loss():
             agent = PPOAgent(env, hidden_size=hidden_size)
             agent.load_state_dict(torch.load(model_path))
 
-            mask, levin_loss, n_iterations = hill_climbing(selected_masks, selected_models_of_masks, selected_options_n_iterations, agent, problem, trajectories, number_actions, option_length, number_restarts, hidden_size, logger=logger)
+            mask, levin_loss, n_iterations = hill_climbing(masks=selected_masks, 
+                                                           selected_models_of_masks=selected_models_of_masks, 
+                                                           selected_options_n_iterations=selected_options_n_iterations, 
+                                                           model=agent, 
+                                                           problem=problem, 
+                                                           trajectories=trajectories, 
+                                                           loss=loss,
+                                                           number_actions=number_actions, 
+                                                           number_iterations_ls=option_length, 
+                                                           args=args, 
+                                                           logger=logger)
 
             logger.info(f'Search Summary for {problem},seed={seed}: \nBest Mask:{mask}, levin_loss={levin_loss}, n_iterations={n_iterations}\nPrevious Loss: {best_loss}, Previous selected loss:{previous_loss}, n_selected_masks={len(selected_masks)}')
             if best_loss is None or levin_loss < best_loss:
@@ -418,6 +530,7 @@ def whole_dec_options_training_data_levin_loss():
     to minimize the Levin loss of a given data set. 
     """
     args = tyro.cli(Args)
+    args.log_path += "_" + args.exp_name
     
     # Logger configurations
     logger = utils.get_logger('whole_dec_option_logger', args.log_level, args.log_path)
@@ -598,7 +711,7 @@ def train_extended_ppo(options, problem, seed, args: Args, logger):
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
     exp_name = f"PPO_{problem}-{hidden_size}_{game_width}_{l1_lambda}_{number_restarts}_{number_actions}"
-    run_name = f"{exp_name}__{seed}__{int(time.time())}_retrained"
+    run_name = f"{exp_name}__{seed}__{int(time.time())}_{args.exp_name}_retrained"
     writer = SummaryWriter(f"outputs/tensorboard/runs/{run_name}")
     writer.add_text(
         "hyperparameters",
@@ -624,8 +737,8 @@ def train_extended_ppo(options, problem, seed, args: Args, logger):
 
 def main():
     # evaluate_all_masks_levin_loss()
-    # hill_climbing_mask_space_training_data_levin_loss()
-    whole_dec_options_training_data_levin_loss()
+    hill_climbing_mask_space_training_data_levin_loss()
+    # whole_dec_options_training_data_levin_loss()
 
 if __name__ == "__main__":
     main()

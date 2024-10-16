@@ -15,6 +15,8 @@ class Args:
     """the id of the environment corresponding to the trained agent
     choices from [ComboGrid, MiniGrid-SimpleCrossingS9N1-v0]
     """
+    cpus: int = 4
+    """"The number of CPUTs used in this experiment."""
     
     # hyperparameter arguments
     game_width: int = 5
@@ -25,7 +27,7 @@ class Args:
     """"""
     option_length: int = 3
     """number of while loops for applying the option"""
-    number_restarts: int = 400
+    number_restarts: int = 1000
     """number of hill climbing restarts for finding one option"""
     
     # Retraining specific arguments

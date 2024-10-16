@@ -22,12 +22,13 @@ class Args:
     """whether to capture videos of the agent performances (check out `videos` folder)"""
 
     # Algorithm specific arguments
-    env_id: str = "MiniGrid-FourRooms-v0"
-    """the id of the environment; choices fro [MiniGrid-SimpleCrossingS9N1-v0, ComboGrid, MiniGrid-FourRooms-v0]"""
+    # env_id: str = "MiniGrid-FourRooms-v0"
+    env_id: str = "ComboGrid_TL-BR"
+    """the id of the environment; choices fro [MiniGrid-SimpleCrossingS9N1-v0, ComboGrid_[grid type str], MiniGrid-FourRooms-v0]"""
     total_timesteps: int = 1_500_000
     """total timesteps of the experiments"""
-    # learning_rate: Union[float, List] = (2.5e-4, 2.5e-4, 2.5e-4) # ComboGrid
-    learning_rate: Union[float, List] = (0.0005, 0.0005, 5e-05) # MiniGrid-FourRooms-v0
+    learning_rate: Union[float, List] = (2.5e-4, 2.5e-4, 2.5e-4) # ComboGrid
+    # learning_rate: Union[float, List] = (0.0005, 0.0005, 5e-05) # MiniGrid-FourRooms-v0
     """the learning rate of the optimizer"""
     num_envs: int = 4
     """the number of parallel game environments"""
@@ -45,13 +46,13 @@ class Args:
     """the K epochs to update the policy"""
     norm_adv: bool = True
     """Toggles advantages normalization"""
-    # clip_coef: Union[float, List] = (0.2, 0.2, 0.2) # ComboGrid
-    clip_coef: Union[float, List] = (0.15, 0.1, 0.2) # MiniGrid-FourRooms-v0
+    clip_coef: Union[float, List] = (0.2, 0.2, 0.2) # ComboGrid
+    # clip_coef: Union[float, List] = (0.15, 0.1, 0.2) # MiniGrid-FourRooms-v0
     """the surrogate clipping coefficient"""
     clip_vloss: bool = True
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
-    # ent_coef: Union[float, List] = (0.01, 0.01, 0.01) # ComboGrid
-    ent_coef: Union[float, List] = (0.05, 0.2, 0.0) # MiniGrid-FourRooms-v0
+    ent_coef: Union[float, List] = (0.01, 0.01, 0.01) # ComboGrid
+    # ent_coef: Union[float, List] = (0.05, 0.2, 0.0) # MiniGrid-FourRooms-v0
     """coefficient of the entropy"""
     vf_coef: float = 0.5
     """coefficient of the value function"""
@@ -61,9 +62,9 @@ class Args:
     """the target KL divergence threshold"""
 
     # hyperparameter arguments
-    game_width: int = 5
+    game_width: int = 3
     """the length of the combo/mini grid square"""
-    hidden_size: int = 64
+    hidden_size: int = 32
     """"""
     l1_lambda: float = 0
     """"""
