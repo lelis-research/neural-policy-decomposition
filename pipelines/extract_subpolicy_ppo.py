@@ -193,19 +193,19 @@ def evaluate_all_masks_levin_loss():
         loss.evaluate_on_each_cell(selected_models_of_masks, selected_masks, problem, game_width)
 
 def hill_climbing_iter(
-    i, 
-    args, 
-    values, 
-    masks, 
-    selected_models_of_masks, 
-    model, 
-    problem, 
-    trajectories, 
-    number_actions, 
-    selected_options_n_iterations, 
-    number_iterations, 
-    default_loss, 
-    loss
+    i: int, 
+    args: Args, 
+    values: List, 
+    masks: List, 
+    selected_models_of_masks: List, 
+    model: PPOAgent, 
+    problem: str, 
+    trajectories: List, 
+    number_actions: int, 
+    selected_options_n_iterations: List, 
+    number_iterations: int, 
+    default_loss: float, 
+    loss: LevinLossActorCritic
 ):
     # Initialize the value depending on whether it's the last restart or not
     if i == args.number_restarts:
@@ -275,7 +275,7 @@ def hill_climbing_iter(
     # logger.info(f"#{i}: {n_steps} steps taken. For option length {number_iterations}")
 
     # Optionally return the best mask and the best value if needed
-    return best_value, current_mask, init_mask, n_steps, applicable
+    return i, best_value, current_mask, init_mask, n_steps, applicable
             
 
 def hill_climbing(
@@ -311,43 +311,34 @@ def hill_climbing(
     for number_iterations in number_iterations_ls:
         n_applicable = [0] * (args.number_restarts + 1)
 
-        # Define a function to execute hill climbing for a given `i`
-        def run_hill_climbing_iter(i):
-            best_value, best_mask, init_mask, n_steps, applicable = hill_climbing_iter(
-                i=i,
-                args=args,
-                values=mask_values,
-                masks=masks,
-                selected_models_of_masks=selected_models_of_masks,
-                model=model,
-                problem=problem,
-                trajectories=trajectories,
-                number_actions=number_actions,
-                selected_options_n_iterations=selected_options_n_iterations,
-                number_iterations=number_iterations,
-                default_loss=default_loss,
-                loss=loss
-            )
-            return i, best_value, best_mask, init_mask, n_steps, applicable
-
         # Use ProcessPoolExecutor to run the hill climbing iterations in parallel
         with concurrent.futures.ProcessPoolExecutor(max_workers=args.cpus) as executor:
-            # Map the function across the range of restarts
-            results = executor.map(run_hill_climbing_iter, range(args.number_restarts + 1))
+            # Submit tasks to the executor with all required arguments
+            futures = [
+                executor.submit(
+                    hill_climbing_iter, i, args, mask_values, masks, selected_models_of_masks,
+                    model, problem, trajectories, number_actions, selected_options_n_iterations,
+                    number_iterations, default_loss, loss
+                )
+                for i in range(args.number_restarts + 1)
+            ]
 
-        # Process the results
-        for i, best_value, best_mask, init_mask, n_steps, applicable in results:
-            if applicable:
-                n_applicable[i] = 1
-            if i == args.number_restarts:
-                logger.info(f'Resulting Mask from the original Model: {best_mask}, Loss: {best_value}, using {number_iterations} iterations.')
-            if best_overall is None or best_value < best_value_overall:
-                best_overall = copy.deepcopy(best_mask)
-                best_value_overall = best_value
-                best_n_iterations = number_iterations
+            # Process the results as they complete
+            for future in concurrent.futures.as_completed(futures):
+                i, best_value, best_mask, init_mask, n_steps, applicable = future.result()
 
-                logger.info(f'Best Mask Overall: {best_overall}, Best Loss: {best_value_overall}, Best number of iterations: {best_n_iterations}')
-                logger.info(f'{n_steps} steps taken.\n Starting mask: {init_mask}\n Resulted Mask: {best_mask}')
+                if applicable:
+                    n_applicable[i] = 1
+                if i == args.number_restarts:
+                    logger.info(f'iteration {i}, Resulting Mask from the original Model: {best_mask}, Loss: {best_value}, using {number_iterations} iterations.')
+                if best_overall is None or best_value < best_value_overall:
+                    best_overall = copy.deepcopy(best_mask)
+                    best_value_overall = best_value
+                    best_n_iterations = number_iterations
+
+                    logger.info(f'iteration {i}, Best Mask Overall: {best_overall}, Best Loss: {best_value_overall}, Best number of iterations: {best_n_iterations}')
+                    logger.info(f'iteration {i}, {n_steps} steps taken.\n Starting mask: {init_mask}\n Resulted Mask: {best_mask}')
+
         
         logger.info(f'Out of {args.number_restarts}, {sum(n_applicable)} found applicable options with {number_iterations} iterations.')
     
