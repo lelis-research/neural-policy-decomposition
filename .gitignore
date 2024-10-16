@@ -11,3 +11,6 @@ outputs
 logs*
 runs
 .venv
+__pycache__
+*/__pycache__/*
+agents/__pycache__/*
