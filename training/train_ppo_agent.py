@@ -10,7 +10,7 @@ from utils import utils
 from agents.policy_guided_agent import PPOAgent
 
 
-def train_ppo(envs: gym.vector.SyncVectorEnv, args, model_file_name, device, writer=None, logger=None, seed=None):
+def train_ppo(envs: gym.vector.SyncVectorEnv, seed, args, model_file_name, device, logger=None, writer=None):
     hidden_size = args.hidden_size
     l1_lambda = args.l1_lambda
     if not seed:

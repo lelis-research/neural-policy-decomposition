@@ -1,4 +1,5 @@
 import sys
+import os
 import time
 import logging
 
@@ -21,10 +22,13 @@ def get_ppo_model_file_name(tag="", **kwargs):
         # f'-l1lambda{kwargs["l1_lambda"]}' + \
     return file_name
 
-def get_logger(logger_name, log_level, log_path):
+def get_logger(logger_name, log_level, log_path, suffix=""):
     # Logger configurations
+    os.makedirs(log_path, exist_ok=True)
+    
     logger = logging.getLogger(logger_name)
     logger.setLevel(log_level.upper())
+    log_path += suffix
     log_path = f"{log_path}_{str(int(time.time()))}.log"
     handler = logging.FileHandler(log_path, mode='w')
     console_handler = logging.StreamHandler(sys.stdout)
