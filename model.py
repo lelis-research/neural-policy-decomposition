@@ -2,6 +2,80 @@ import torch
 import numpy as np
 from torch import nn
 
+class STEQuantize(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x):
+        return torch.sign(x)  # Quantize to -1 or 1
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output
+
+# Modify the CustomRNN to use quantized bottleneck for hidden states with -1 and 1 quantization
+class QuantizedRNN(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super(QuantizedRNN, self).__init__()
+        self.hidden_size = hidden_size
+        self.in2hidden = nn.Linear(input_size + hidden_size, hidden_size)
+        self.in2output = nn.Linear(input_size + hidden_size, hidden_size)
+        self.in3output = nn.Linear(hidden_size, output_size)  # This takes only the hidden state
+        self.outsoftmax = nn.Softmax(dim=1)
+        self.apply(self._weights_init_xavier)
+
+        self._optimizer = torch.optim.Adam(self.parameters(), lr=0.001, weight_decay=0.0)
+        self._criterion = nn.CrossEntropyLoss()
+    
+    def _weights_init_xavier(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                nn.init.zeros_(m.bias)
+
+    def print_weights(self):
+        for name, param in self.named_parameters():
+            if 'weight' in name:
+                weights = param.data.cpu().numpy()
+                print(f"Weights of layer {name}:")
+                print(np.array_str(weights, precision=3, suppress_small=True))
+
+    def forward(self, x, hidden_state):
+        combined = torch.cat((x, hidden_state), 1)
+        hidden = torch.tanh(self.in2hidden(combined))  # Use tanh activation for hidden state
+        # Apply quantization to the hidden state (-1 and 1 quantization)
+        quantized_hidden = STEQuantize.apply(hidden)
+        combined_2 = torch.cat((x, quantized_hidden), 1)
+        output_1 = torch.tanh(self.in2output(combined_2))
+        output_2 = self.in3output(output_1)  # Only the hidden state is passed to the final output layer
+        output = self.outsoftmax(output_2)
+
+        return output, quantized_hidden
+    
+    def init_hidden(self):
+        return torch.tensor([-1]*self.hidden_size, dtype=torch.float32).reshape(1, self.hidden_size)
+        # return torch.zeros(1, self.hidden_size)
+    
+    def _l1_norm(self, lambda_l1):
+        l1_norm = sum(p.abs().sum() for name, p in self.named_parameters() if "bias" not in name)
+        return lambda_l1 * l1_norm
+    
+    def train(self, trajectory, l1_coef):
+        h = self.init_hidden()
+        step_loss = 0
+        self._optimizer.zero_grad()
+        for x, y in trajectory.get_trajectory():
+            x_tensor = torch.tensor(x.get_observation(), dtype=torch.float32).view(1, -1)
+            y_tensor = torch.tensor([y], dtype=torch.long) 
+            
+            output, h = self.forward(x_tensor, h)
+            step_loss += self._criterion(output, y_tensor)
+            step_loss += self._l1_norm(l1_coef)
+            
+        step_loss.backward()    
+        self._optimizer.step()
+
+        return step_loss
+    
+
 class CustomRNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
         super(CustomRNN, self).__init__()
