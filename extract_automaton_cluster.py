@@ -15,11 +15,11 @@ import os
 os.environ['LOKY_MAX_CPU_COUNT'] = '4'
 
 class Mode:
-    def __init__(self, index, hiddens):
+    def __init__(self, index, center):
         self._index = index
-        self._hiddens = []
-        # for h in hiddens:
-        #     self._hiddens.append(torch.tensor(copy.deepcopy(h)).unsqueeze(0))
+        if not torch.is_tensor(center):
+            center = torch.from_numpy(center).view(1, -1)
+        self._center = center
 
     def __eq__(self, other):
         if isinstance(other, Mode):
@@ -38,35 +38,73 @@ class Mode:
     def has_hidden(self, h):
         # print(any(torch.equal(t, h) for t in self._hiddens))
         return any(torch.equal(t, h) for t in self._hiddens)
-    
+    def copy(self):
+        return Mode(self._index, self._center)
 class Automaton:
-    def __init__(self, partitioner, hidden_states, model, mask=None):
+    def __init__(self, partitioner, hidden_states, model, problem, mask=None, get_adj_dict=True):
         self.partitioner = partitioner
         self.init_h = hidden_states[0]
+        self._hidden_states = hidden_states
         self.model = model
         self.mask = mask
+        if mask is None:
+            self.mask = [(-1, -1, -1, -1), (-1, -1)]
+        self._problem = problem
+        self._modes, _  = self.partitioner.get_modes(hidden_states)
+        self._initial_mode = self._modes[self.partitioner.kmeans.predict(self.init_h.detach().numpy().astype(np.float32))[0]]
+        self._adjacency_dict = {}
+        if get_adj_dict:
+            self._adjacency_dict = self.get_adj_dict()
 
-        self.partitioner.get_modes(hidden_states)
+    def get_adj_dict(self):
+        env = Game(3, 3, self._problem)
+        h = self.init_h
+        adj_dict = {}
+        current_mode = self._modes[self.partitioner.predict_with_threshold(h.detach().numpy().astype(np.float32))[0]]
+        while not env.is_over():
+            x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
+            action_prob, h = self.model(x_tensor, h)
+            predict = self.partitioner.predict_with_threshold(h.detach().numpy().astype(np.float32))[0]
+            # h = self.modes[predict]._center
+            if current_mode in adj_dict:
+                adj_dict[current_mode].add(self._modes[predict])
+            else:
+                adj_dict[current_mode] = {self._modes[predict]}
+            current_mode = self._modes[predict]
+            action = torch.argmax(action_prob).item()
+            env.apply_action(action)
+        return adj_dict
+    
+    def add_adj_dict(self, adj_dict):
+        for mode, connections in adj_dict.items():
+            if mode not in self._adjacency_dict:
+                self._adjacency_dict[mode] = set()
+            for con in connections:
+                self._adjacency_dict[mode].add(con)
+
     
     def transition(self, env, h=None, mask=None):
+        self._modes_used = self._adjacency_dict.keys()
         actions = []
         if h is None:
             h = self.init_h
+        current_mode = self._modes[self.partitioner.predict_with_threshold(h.detach().numpy().astype(np.float32))[0]]
         if mask is None:
-            mask0 = torch.tensor((-1, -1, -1, -1), dtype=torch.int8).view(1, -1)
-            mask1 = torch.tensor((-1, -1), dtype=torch.int8).view(1, -1)
+            mask0 = torch.tensor(self.mask[0], dtype=torch.int8).view(1, -1)
+            mask1 = torch.tensor(self.mask[1], dtype=torch.int8).view(1, -1)
         else:
             mask0 = mask[0]
             mask1 = mask[1]
         for i in range(12):
             x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
             action_prob, h = self.model.masked_forward(x_tensor, h, mask0,mask1)
-            predict = self.partitioner.predict_with_threshold(h.detach().numpy().astype(np.float32))
-            if predict == -1:
+            predict = self.partitioner.predict_with_threshold(h.detach().numpy().astype(np.float32))[0]
+            if predict == -1 or self._modes[predict] not in self._modes_used:
                 return True, actions
+            if current_mode == self._modes[2] and predict == 2:
+                h = self._modes[0]._center 
             action = torch.argmax(action_prob).item()
             env.apply_action(action)
-            # print(action)
             actions.append(action)
         return True, actions
 
@@ -96,8 +134,8 @@ class Partitioner:
             # Find the maximum distance within the cluster
             max_distances.append(np.max(cluster_distances))
         for cluster_idx in set(clusters):
-            cluster_group = [hidden_states[i] for i in range(len(hidden_states)) if clusters[i] == cluster_idx]
-            mode = Mode(cluster_idx, cluster_group)
+            # cluster_group = [hidden_states[i] for i in range(len(hidden_states)) if clusters[i] == cluster_idx]
+            mode = Mode(cluster_idx, self.kmeans.cluster_centers_[cluster_idx])
             modes.append(mode)
         self.max_distances = max_distances
         return modes, max_distances
@@ -192,42 +230,45 @@ def test_all_masks(rnn, option, size=4):
     np.save("actions_data_4_2_v2.npy", actions, allow_pickle=True)
 
 
-# def main():
-#     problem = "TL-BR"
-#     # problem = "TR-BL"
-#     # problem = "BR-TL"
-#     # problem = "BL-TR"
+def main():
+    problem = "TL-BR"
+    # problem = "TR-BL"
+    # problem = "BR-TL"
+    # problem = "BL-TR"
 
-#     kmeans = Partitioner(4)
-#     env = Game(3, 3, problem)
-#     rnn = CustomRNN(21, 4, 3)
-#     hidden_states = []
-#     rnn.load_state_dict(torch.load('binary/game-width3-TL-BR-rnn-noreg-4-2-model.pth'))
+    kmeans = Partitioner(4)
+    env = Game(3, 3, problem)
+    rnn = CustomRNN(21, 4, 3)
+    hidden_states = []
+    rnn.load_state_dict(torch.load(f'binary/game-width3-{problem}-rnn-4-2-model.pth'))
 
-#     h = rnn.init_hidden()
-#     while not env.is_over():
-#         hidden_states.append(h.squeeze().detach().numpy().astype(np.float32))
-#         x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
-#         prob_actions, h = rnn(x_tensor, h)
-#         a = torch.argmax(prob_actions).item()
-#         env.apply_action(a)
-#     hidden_states.append(h.squeeze().detach().numpy().astype(np.float32))
+    h = rnn.init_hidden()
+    while not env.is_over():
+        hidden_states.append(h)
+        x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
+        prob_actions, h = rnn(x_tensor, h)
+        a = torch.argmax(prob_actions).item()
+        env.apply_action(a)
+    hidden_states.append(h)
 
-#     # modes, max_distances = kmeans.get_modes(hidden_states)
-#     # modes, obs, table = kmeans.create_T_mat(rnn, modes, hidden_states)
-#     option = Automaton(kmeans, hidden_states, rnn, [(-1,0, -1, -1),(1,-1)]) 
-#     test_all_masks(rnn,option)
-#     # problems = ["BL-TR", "TR-BL", "BR-TL", "TL-BR"]
-#     # for problem in problems:
-#     #     env = Game(3, 3, problem)
-#     #     print(problem)
-#     #     for i in range(3):
-#     #         for j in range(3):
-#     #             env.reset()
-#     #             print("\n",i,j)
-#     #             env._matrix_unit = np.zeros((3, 3))
-#     #             env._matrix_unit[i][j] = 1
-#     #             option.transition(env=env)
+    # modes, max_distances = kmeans.get_modes(hidden_states)
+    # modes, obs, table = kmeans.create_T_mat(rnn, modes, hidden_states)
+    option = Automaton(kmeans, hidden_states, rnn, problem) 
+    print(option.adjacency_dict)
+    exit()
+    # test_all_masks(rnn,option)
+    problems = ["BL-TR", "TR-BL", "BR-TL", "TL-BR"]
+    for problem in problems:
+        env = Game(3, 3, problem)
+        print(problem)
+        for i in range(3):
+            for j in range(3):
+                env.reset()
+                print("\n",i,j)
+                env._matrix_unit = np.zeros((3, 3))
+                env._matrix_unit[i][j] = 1
+                _, actions = option.transition(env=env, mask=[torch.tensor((-1, -1, 1, -1), dtype=torch.int8).view(1, -1), torch.tensor((-1, -1), dtype=torch.int8).view(1, -1)])
+                print(actions)
 
 #     # env = Game(3, 3, "BR-TL")
 #     # h = rnn.init_hidden()
@@ -241,5 +282,5 @@ def test_all_masks(rnn, option, size=4):
 #     #     env.apply_action(a)
 
 
-# if __name__ == "__main__":
-#     main()
+if __name__ == "__main__":
+    main()
