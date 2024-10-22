@@ -8,6 +8,7 @@ outputs
 tmp.py
 __pycache__/*
 outputs
+slurm-logs
 logs*
 runs
 .venv

@@ -353,8 +353,37 @@ def hill_climbing(
                 if i % 100 == 0:
                     logger.info(f'Progress: {i}/{args.number_restarts}')
         else:
+            # # Use ProcessPoolExecutor to run the hill climbing iterations in parallel
+            # with concurrent.futures.ThreadPoolExecutor(max_workers=args.cpus) as executor:
+            #     # Submit tasks to the executor with all required arguments
+            #     futures = [
+            #         executor.submit(
+            #             hill_climbing_iter, i, agent, option_size, problem_str, number_actions, 
+            #             mask_values, trajectories, selected_masks, selected_masks_models, 
+            #             selected_option_sizes, default_loss, args, loss
+            #         )
+            #         for i in range(args.number_restarts + 1)
+            #     ]
+
+            #     # Process the results as they complete
+            #     for future in concurrent.futures.as_completed(futures):
+            #         try:
+            #             i, best_value, best_mask, init_mask, n_steps, applicable = future.result()
+            #             _update_best(i=i, 
+            #                          best_value=best_value, 
+            #                          best_mask=best_mask,
+            #                          n_steps=n_steps, 
+            #                          init_mask=init_mask, 
+            #                          applicable=applicable,
+            #                          n_applicable=n_applicable, 
+            #                          option_size=option_size)
+            #             if i % 100 == 0:
+            #                 logger.info(f'Progress: {i}/{args.number_restarts}')
+            #         except Exception as exc:
+            #             logger.error(f'restart #{i} generated an exception: {exc}')
+
             # Use ProcessPoolExecutor to run the hill climbing iterations in parallel
-            with concurrent.futures.ThreadPoolExecutor(max_workers=args.cpus) as executor:
+            with concurrent.futures.ProcessPoolExecutor(max_workers=args.cpus) as executor:
                 # Submit tasks to the executor with all required arguments
                 futures = [
                     executor.submit(
@@ -370,13 +399,13 @@ def hill_climbing(
                     try:
                         i, best_value, best_mask, init_mask, n_steps, applicable = future.result()
                         _update_best(i=i, 
-                                     best_value=best_value, 
-                                     best_mask=best_mask,
-                                     n_steps=n_steps, 
-                                     init_mask=init_mask, 
-                                     applicable=applicable,
-                                     n_applicable=n_applicable, 
-                                     option_size=option_size)
+                                    best_value=best_value, 
+                                    best_mask=best_mask,
+                                    n_steps=n_steps, 
+                                    init_mask=init_mask, 
+                                    applicable=applicable,
+                                    n_applicable=n_applicable, 
+                                    option_size=option_size)
                         if i % 100 == 0:
                             logger.info(f'Progress: {i}/{args.number_restarts}')
                     except Exception as exc:

@@ -8,5 +8,5 @@
 
 source envs/venv/bin/activate # Assuming we have all our environments in  `../envs/`
 
-python -m pipelines.extract_subpolicy_ppo --log_path=outputs/logs/logfile \
---exp_name=option_extraction_hc_logits_1000 --cpus=$SLURM_CPUS_PER_TASK
+python -m pipelines.extract_subpolicy_ppo \
+--exp_name=option_extraction_hc_processpool --cpus=$SLURM_CPUS_PER_TASK
