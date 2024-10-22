@@ -3,10 +3,9 @@ import random
 import torch
 import numpy as np
 from tqdm import tqdm
+import torch.nn as nn
 from typing import Union
 import matplotlib.pyplot as plt
-
-import torch.nn as nn
 from environemnts.environments_combogrid_gym import ComboGym
 from environemnts.environments_minigrid import MiniGridWrap
 from gymnasium.vector import SyncVectorEnv
@@ -141,6 +140,8 @@ class PPOAgent(nn.Module):
             layer_init(nn.Linear(hidden_size, action_space_size), std=0.01),
         )
         self.mask = None
+        self.option_size = None
+        self.problem_id = None
         
     def get_value(self, x):
         return self.critic(x)
@@ -152,9 +153,10 @@ class PPOAgent(nn.Module):
             action = probs.sample()
         return action, probs.log_prob(action), probs.entropy(), self.critic(x), logits
     
-    def to_option(self, mask, option_size):
+    def to_option(self, mask, option_size, problem):
         self.mask = mask
         self.option_size = option_size
+        self.problem_id = problem
 
     def _masked_neuron_operation(self, logits, mask):
         """

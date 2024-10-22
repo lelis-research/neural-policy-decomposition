@@ -2,12 +2,9 @@ import copy
 import torch
 import math
 import numpy as np
-from pandas import Series
-from typing import Union, List
-from torch import nn
-from utils import utils
+from typing import List
 import torch.nn.functional as F
-from pipelines.args import Args
+# from pipelines.test_on_every_cell import Args as EachCellTestArgs
 from agents.policy_guided_agent import PPOAgent
 from environemnts.environments_combogrid_gym import ComboGym
 from environemnts.environments_minigrid import get_training_tasks_simplecross
@@ -34,7 +31,7 @@ class LevinLossActorCritic:
                 return False
         return True
 
-    def _run(self, env, mask, agent, numbers_steps):
+    def _run(self, env: ComboGym, mask: list, agent: PPOAgent, numbers_steps: int):
         """
         This function executes an option, which is given by a mask, an agent, and a number of steps. 
 
@@ -82,7 +79,7 @@ class LevinLossActorCritic:
         log_uniform_probability = math.log(uniform_probability)
         return log_depth - number_decisions * log_uniform_probability
 
-    def compute_loss(self, masks, models, problem_str, trajectories, number_actions, number_steps):
+    def compute_loss(self, masks, agents, problem_str, trajectories, number_actions, number_steps):
         """
         This function computes the Levin loss of a set of masks (programs). Each mask in the set is 
         what we select as a set of options, according to Alikhasi & Lelis (2024). 
@@ -107,9 +104,9 @@ class LevinLossActorCritic:
                 chained_trajectory.concat(trajectory)
             name_list = [problem for _ in range(len(trajectory._sequence))]
             joint_problem_name_list = joint_problem_name_list + name_list
-        return self.loss(masks, models, chained_trajectory, number_actions, joint_problem_name_list, problem_str, number_steps)
+        return self.loss(masks, agents, chained_trajectory, number_actions, joint_problem_name_list, problem_str, number_steps)
 
-    def print_output_subpolicy_trajectory(self, models, masks, masks_problems, trajectories, number_steps, logger):
+    def print_output_subpolicy_trajectory(self, options: List[PPOAgent], trajectories, logger):
         """
         This function prints the "behavior" of the options encoded in a set of masks. It will show
         when each option is applicable in different states of the different trajectories. Here is 
@@ -148,17 +145,17 @@ class LevinLossActorCritic:
                         M[j] = M[j - 1] + 1
 
                 if j < len(t):
-                    for i in range(len(masks)):
+                    for i in range(len(options)):
 
-                        if masks_problems[i] == problem:
+                        if options[i].problem_id == problem:
                             continue
 
-                        actions = self._run(copy.deepcopy(t[j][0]), masks[i], models[i], number_steps[i])
+                        actions = self._run(copy.deepcopy(t[j][0]), options[i].mask, options[i], options[i].option_size)
 
                         if self.is_applicable(t, actions, j):
                             M[j + len(actions)] = min(M[j + len(actions)], M[j] + 1)
 
-                            mask_name = 'o' + str(i) + "-" + str(masks[i].cpu().numpy())
+                            mask_name = 'o' + str(i) + "-" + str(options[i].mask.cpu().numpy())
                             if mask_name not in mask_usage:
                                 mask_usage[mask_name] = []
 
@@ -166,7 +163,6 @@ class LevinLossActorCritic:
                             for k in range(j, j+len(actions)):
                                 usage[k] = str(i)
                             mask_usage[mask_name].append(usage)
-
             
             for mask, matrix in mask_usage.items():
                 logger.info(f'Mask: {mask}')
@@ -181,10 +177,21 @@ class LevinLossActorCritic:
                 logger.info(buffer)
             logger.info(f'Number of Decisions:  {M[len(t)]}')
 
-    def evaluate_on_each_cell(self, test_agents: List[PPOAgent], masks, trained_problems, problem_test, args: Args, seed: int, label="", logger=None):
+    def evaluate_on_each_cell(self, options: List[PPOAgent], problem_test, args, seed: int, logger=None):
         """
         This test is to see for each cell, options will give which sequence of actions
         """
+        def _display_options(options, game_width):
+            buffer = "\n"
+            for i in range(game_width):
+                for j in range(game_width):
+                    if env.is_over(loc=(i,j)):
+                        buffer += ("Goal" + " " * 6)
+                        continue
+                    buffer += (",".join(map(str, options[(i,j)])) + " " * 10)[:10]
+                buffer += "\n"
+            logger.info(buffer)
+
         if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
             env = get_training_tasks_simplecross(args.game_width, seed=seed)
             directions = ["R", "D", "L", "U"]
@@ -195,9 +202,10 @@ class LevinLossActorCritic:
             game_width = args.game_width
         else:
             raise NotImplementedError
-        for agent, idx, mask, trained_problem in zip(test_agents, range(len(test_agents)), masks, trained_problems):
+        
+        for idx, agent in enumerate(options):
             # Evaluating the performance of options
-            logger.info(f"\n {label} {idx} Option: {mask.cpu().numpy()} {trained_problem}")
+            logger.info(f"\n {idx} Option: {agent.mask.cpu().numpy()} {agent.problem_id}")
             for direction in directions:
                 logger.info(f"Direction: {direction}")
                 options = {}
@@ -206,22 +214,12 @@ class LevinLossActorCritic:
                         if env.is_over(loc=(i,j)):
                             continue
                         env.reset(init_loc=(i,j), init_dir=direction)
-                        trajectory = agent.run_with_mask(env, mask, max_size_sequence=agent.option_size)
+                        trajectory = agent.run_with_mask(env, agent.mask, max_size_sequence=agent.option_size)
                         actions = trajectory.get_action_sequence()
                         options[(i,j)] = actions
-                state = trajectory.get_state_sequence()[0]
 
                 logger.info("Option Outputs:")
-                buffer = "\n"
-                for i in range(game_width):
-                    for j in range(game_width):
-                        if env.is_over(loc=(i,j)):
-                            buffer += ("Goal" + " " * 10)[:10]
-                            continue
-                        buffer += (",".join(list(map(str, options[(i,j)]))) + " " * 10)[:10]
-                    buffer += "\n"
-                logger.info(buffer)
-                # logger.info("\n" + state.represent_options(options))
+                _display_options(options, game_width)
 
                 # Evaluating the performance of original agents
                 options = {}
@@ -233,19 +231,9 @@ class LevinLossActorCritic:
                         trajectory = agent.run(env, length_cap=agent.option_size - 1)
                         actions = trajectory.get_action_sequence()
                         options[(i,j)] = actions
-                state = trajectory.get_state_sequence()[0]
 
                 logger.info("Original Agent's Outputs:")
-                buffer = "\n"
-                for i in range(game_width):
-                    for j in range(game_width):
-                        if env.is_over(loc=(i,j)):
-                            buffer += ("Goal" + " " * 10)[:10]
-                            continue
-                        buffer += (",".join(list(map(str, options[(i,j)]))) + " " * 10)[:10]
-                    buffer += "\n"
-                logger.info(buffer)
-                # logger.info("\n" + state.represent_options(options))
+                _display_options(options, game_width)
         logger.info("#### ### ###\n")
 
 
@@ -300,15 +288,12 @@ class LogitsLossActorCritic(LevinLossActorCritic):
                         loss = 0
                         n_actions = len(actions)
                         for logits, target_logits in zip(logits_ls, trajectory.get_logits_sequence()[j:j+n_actions]):
-                            # print(logits, target_logits)
                             T = torch.e**2
                             probs = F.softmax(logits/T, dim=-1)
                             target_probs = F.softmax(target_logits/T, dim=-1)
-
                             l = mae_loss(probs, target_probs)
 
                             # l = torch.sum(-F.softmax(target_logits, dim=-1) * F.log_softmax(logits, dim=-1))
-
                             # self.logger.info(f"cross entropy sample loss: {l}")
                             losses_dist[number_steps[i]].append(l.item())
 
@@ -321,8 +306,7 @@ class LogitsLossActorCritic(LevinLossActorCritic):
                         # self.logger.info(f"n_steps: {n_steps}")
                         M[j + n_actions] = min(M[j + n_actions], M[j] + n_steps)
                         # utils.logger_flush(self.logger)
-                    # else:
-                        # self.logger.info(f"Not applicable: {actions}!={[val[1] for val in t[j:j+len(actions)]]}, {len(t)}, {j}")
+                    
         uniform_probability = (1/(len(masks) + number_actions)) 
         depth = len(t) + 1
         number_decisions = M[len(t)]

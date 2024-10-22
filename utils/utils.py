@@ -28,6 +28,7 @@ def get_logger(logger_name, log_level, log_path, suffix=""):
     
     logger = logging.getLogger(logger_name)
     logger.setLevel(log_level.upper())
+    log_path += "/" # Making sure the file and dir are separated
     log_path += suffix
     log_path = f"{log_path}_{str(int(time.time()))}.log"
     handler = logging.FileHandler(log_path, mode='w')
