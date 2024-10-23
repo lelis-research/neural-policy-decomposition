@@ -28,9 +28,9 @@ class Args:
     seeds: Union[List[int], str] = (0,1,2)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
     model_paths: List[str] = (
-        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h16_l10_lr0.0005_clip0.25_ent0.1_sd0',
-        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h16_l10_lr0.001_clip0.2_ent0.1_sd1',
-        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h16_l10_lr0.001_clip0.2_ent0.1_sd2'
+        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_sd0',
+        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd1',
+        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd2'
     )
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
@@ -46,7 +46,7 @@ class Args:
     # hyperparameter arguments
     game_width: int = 5
     """the length of the combo/mini grid square"""
-    hidden_size: int = 16
+    hidden_size: int = 64
     """"""
     l1_lambda: float = 0
     """"""
@@ -65,7 +65,7 @@ def process_args() -> Args:
     args = tyro.cli(Args)
     args.exp_id = f'{args.exp_name}_{args.env_id}' + \
     f'_gw{args.game_width}_h{args.hidden_size}_l1{args.l1_lambda}' + \
-    f'_r{args.number_restarts}_sd{",".join(map(str, args.seeds))}/'
+    f'_r{args.number_restarts}_sd{",".join(map(str, args.seeds))}'
     args.log_path = os.path.join(args.log_path, args.exp_id)
     
     if isinstance(args.seeds, list) or isinstance(args.seeds, tuple):
@@ -144,7 +144,6 @@ def save_options(options: List[PPOAgent], trajectories: dict, exp_id: str, logge
     
     # Save each model with its mask and iteration count
     for i, model in enumerate(options):
-        model.to_option(model.mask, model.option_size)  # Assign the mask and iteration count to the model
         
         model_path = os.path.join(save_dir, f'ppo_model_option_{i}.pth')
         torch.save({
@@ -432,8 +431,8 @@ def hill_climbing_mask_space_training_data():
 
     trajectories = regenerate_trajectories(args, verbose=True, logger=logger)
     max_length = max([len(t.get_trajectory()) for t in trajectories.values()])
-    # option_length = list(range(2, max_length + 1))
-    option_length = list(range(2, 5))
+    option_length = list(range(2, max_length + 1))
+    # option_length = list(range(2, 5))
     args.exp_id += f'_olen{",".join(map(str, option_length))}'
 
     params = {
@@ -525,7 +524,7 @@ def hill_climbing_mask_space_training_data():
 
     save_options(options=selected_mask_models, 
                  trajectories=trajectories,
-                 save_dir=args.exp_id, 
+                 exp_id=args.exp_id, 
                  logger=logger)
     
     utils.logger_flush(logger)
