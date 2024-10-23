@@ -6,6 +6,9 @@
 #SBATCH --account=def-lelis
 #SBATCH --array=0-0
 
+module load flexiblas
+export FLEXIBLAS=blis2
+
 source envs/venv/bin/activate # Assuming we have all our environments in  `../envs/`
 
 python -m pipelines.extract_subpolicy_ppo \
