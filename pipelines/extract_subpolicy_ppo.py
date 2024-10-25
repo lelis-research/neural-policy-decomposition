@@ -537,97 +537,79 @@ def hill_climbing_all_segments():
     This function performs hill climbing in the space of masks of a ReLU neural network
     to minimize the Levin loss of a given data set. 
     """
-    args = tyro.cli(Args)
-    args.log_path += "_" + args.exp_name
+    args = process_args()
     
     # Logger configurations
-    logger = utils.get_logger('hc_all_segments_logger', args.log_level, args.log_path)
+    logger = utils.get_logger('hc_all_segments_logger', args.log_level, args.log_path, suffix="option_extraction")
 
-    hidden_size = args.hidden_size    
     game_width = args.game_width
-    number_restarts = args.number_restarts
     number_actions = 3
-    l1_lambda = args.l1_lambda
-    
-    if isinstance(args.seeds, list) or isinstance(args.seeds, tuple):
-        seeds = list(map(int, args.seeds))
-    elif isinstance(args.seeds, str):
-        start, end = map(int, args.seeds.split(","))
-        seeds = list(range(start, end + 1))
-    else:
-        raise NotImplementedError
-    
-    if args.env_id == "ComboGrid":
-        problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
-        seeds = seeds * (len(problems)//len(seeds) + 1)
-        seeds = seeds[:len(problems)]
-    elif args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-        problems = [args.env_id + str(seed) for seed in seeds]
 
-    trajectories = regenerate_trajectories(problems, args, seeds=seeds, verbose=True, logger=logger)
+    trajectories = regenerate_trajectories(args, verbose=True, logger=logger)
     max_length = max([len(t.get_trajectory()) for t in trajectories.values()])
     option_length = list(range(2, max_length + 1))
+    # option_length = list(range(2, 5))
+    args.exp_id += f'_olen{",".join(map(str, option_length))}'
 
     params = {
-        'hidden_size': hidden_size,
+        'hidden_size': args.hidden_size,
         'option_length': option_length,
         'game_width': game_width,
-        'number_restarts': number_restarts,
+        'number_restarts': args.number_restarts,
         'number_actions': number_actions,
-        'l1_lambda': l1_lambda,
-        'problems': problems
+        'l1_lambda': args.l1_lambda,
+        'problems': args.problems
     }
 
-    logger.info("Parameters:")
+    buffer = "Parameters:\n"
     for key, value in params.items():
-        logger.info(f"{key}: {value}")
+        buffer += (f"{key}: {value}\n")
+    logger.info(buffer)
 
     utils.logger_flush(logger)
 
-    loss = LogitsLossActorCritic(logger)
-    # loss = LevinLossActorCritic(logger)
+    logits_loss = LogitsLossActorCritic(logger)
+    levin_loss = LevinLossActorCritic(logger)
 
     all_masks_info = []
 
-    for seed, problem in zip(seeds, problems):
-        logger.info(f'Problem: {problem} Seeds: {seed}')
+    for seed, problem, model_directory in zip(args.seeds, args.problems, args.model_paths):
+        model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
+        logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
         if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
             env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
-            model_path = f'binary/simple-crossing-s9n1-v0/PPO-gw{args.game_width}' + \
-                        f'-h{args.hidden_size}-sd{seed}_MODEL.pt'
         else:
             env = ComboGym(rows=game_width, columns=game_width, problem=problem)
-            model_path = f'binary/PPO-{problem}-gw{args.game_width}-h{args.hidden_size}-l1l{args.l1_lambda}_MODEL.pt'
         
-        agent = PPOAgent(env, hidden_size=hidden_size)
+        agent = PPOAgent(env, hidden_size=args.hidden_size)
         agent.load_state_dict(torch.load(model_path))
 
         t_length = trajectories[problem].get_length()
 
         for length in range(2, t_length + 1):
             for s in range(t_length - length):
-                logger.info(f"Processing option length {length}, segment {s}..")
+                logger.info(f"Processing option length={length}, segment={s}..")
                 option_length = [length]
                 sub_trajectory = {problem: trajectories[problem].slice(s, n=length)}
-                mask, levin_loss, n_iterations = hill_climbing(agent=agent, 
-                                                            problem_str="", 
-                                                            number_actions=number_actions, 
-                                                            trajectories=sub_trajectory, 
-                                                            selected_masks=[], 
-                                                            selected_masks_models=[], 
-                                                            selected_option_sizes=[], 
-                                                            possible_option_sizes=option_length, 
-                                                            loss=loss, 
-                                                            args=args, 
-                                                            logger=logger)
-                all_masks_info.append((mask, problem, n_iterations, model_path))
+                mask, loss_value, option_size = hill_climbing(agent=agent, 
+                                                problem_str="", 
+                                                number_actions=number_actions, 
+                                                trajectories=sub_trajectory, 
+                                                selected_masks=[], 
+                                                selected_masks_models=[], 
+                                                selected_option_sizes=[], 
+                                                possible_option_sizes=option_length, 
+                                                loss=logits_loss, 
+                                                args=args, 
+                                                logger=logger)
+                all_masks_info.append((mask, problem, option_size, model_path, s))
             utils.logger_flush(logger)
         
     logger.debug("\n")
 
     selected_masks = []
-    selected_options_n_iterations = []
-    selected_models_of_masks = []
+    selected_option_sizes = []
+    selected_mask_models = []
     selected_options_problem = []
 
     previous_loss = None
@@ -638,97 +620,64 @@ def hill_climbing_all_segments():
         previous_loss = best_loss
 
         best_loss = None
-        best_mask = None
-        best_n_iterations = None
-        model_best_mask = None
-        problem_mask = None
+        best_mask_model = None
 
-        for mask, problem, n_iterations, model_path in all_masks_info:
+        for mask, problem, option_size, model_path, segment in all_masks_info:
+            model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
+            logger.info(f'Extracting from the agent trained on problem={problem}, seed={seed}, segment=({segment},{segment+option_size})')
             if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
                 env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
-                model_path = f'binary/simple-crossing-s9n1-v0/PPO-gw{args.game_width}' + \
-                            f'-h{args.hidden_size}-sd{seed}_MODEL.pt'
             else:
                 env = ComboGym(rows=game_width, columns=game_width, problem=problem)
-                model_path = f'binary/PPO-{problem}-gw{args.game_width}-h{args.hidden_size}-l1l{args.l1_lambda}_MODEL.pt'
             
-            agent = PPOAgent(env, hidden_size=hidden_size)
+            agent = PPOAgent(env, hidden_size=args.hidden_size)
             agent.load_state_dict(torch.load(model_path))
 
-            levin_loss = loss.compute_loss(masks=selected_masks + [mask], 
-                                           agents=selected_models_of_masks + [agent], 
+            loss_value = levin_loss.compute_loss(masks=selected_masks + [mask], 
+                                           agents=selected_mask_models + [agent], 
                                            problem_str=problem, 
                                            trajectories=trajectories, 
                                            number_actions=number_actions, 
-                                           number_steps=selected_options_n_iterations + [n_iterations])
+                                           number_steps=selected_option_sizes + [option_size])
 
 
-            if best_loss is None or levin_loss < best_loss:
-                best_loss = levin_loss
-                best_mask = mask
-                model_best_mask = agent
-                best_n_iterations = n_iterations
-                problem_mask = problem
+            if best_loss is None or loss_value < best_loss:
+                best_loss = loss_value
+                best_mask_model = agent
+                agent.to_option(mask, option_size, problem)    
 
         # we recompute the Levin loss after the automaton is selected so that we can use 
         # the loss on all trajectories as the stopping condition for selecting masks
-        selected_masks.append(best_mask)
-        selected_options_n_iterations.append(best_n_iterations)
-        selected_models_of_masks.append(model_best_mask)
-        selected_options_problem.append(problem_mask)
-        best_loss = loss.compute_loss(selected_masks, selected_models_of_masks, "", trajectories, number_actions, selected_options_n_iterations)
+        selected_masks.append(best_mask_model.mask)
+        selected_option_sizes.append(best_mask_model.option_size)
+        selected_mask_models.append(best_mask_model)
+        selected_options_problem.append(best_mask_model.problem_id)
+        best_loss = levin_loss.compute_loss(selected_masks, selected_mask_models, "", trajectories, number_actions, selected_option_sizes)
 
-        logger.info(f"Levin loss of the current selected set: {best_loss} on all trajectories")
+        logger.info(f"Added option #{len(selected_mask_models)}; Levin loss of the current selected set: {best_loss} on all trajectories")
         utils.logger_flush(logger)
 
     # remove the last automaton added
-    num_options = len(selected_masks)
-    selected_masks = selected_masks[0:num_options - 1]
-    selected_models_of_masks = selected_models_of_masks[:num_options - 1]
-    selected_options_n_iterations = selected_options_n_iterations[:num_options - 1]
-    for mask, model, n_iterations in zip(selected_masks, selected_models_of_masks, selected_options_n_iterations):
-        model.to_option(mask, n_iterations)
+    num_options = len(selected_mask_models)
+    selected_mask_models = selected_mask_models[:num_options - 1]
 
-    utils.logger_flush(logger)
-    loss.print_output_subpolicy_trajectory(selected_models_of_masks, selected_masks, selected_options_problem, trajectories, selected_options_n_iterations, logger=logger)
-
-    utils.logger_flush(logger)
     # printing selected options
-    logger.info("Selected masks:")
-    for i in range(len(selected_masks)):
-        logger.info(selected_masks[i])
+    logger.info("Selected options:")
+    for i in range(len(selected_mask_models)):
+        logger.info(f"Option #{i}:\n" + 
+                    f"mask={selected_mask_models[i].mask}\n" +
+                    f"size={selected_mask_models[i].option_size}\n" +
+                    f"problem={selected_mask_models[i].problem_id}")
 
-    utils.logger_flush(logger)
-    logger.info("Testing on each grid cell")
-    for seed, problem in zip(seeds, problems):
-        logger.info(f"Testing on each cell..., {problem}")
-        loss.evaluate_on_each_cell(selected_models_of_masks, selected_masks, selected_options_problem, problem, args=args, seed=seed, logger=logger)
-
-    utils.logger_flush(logger)
-    if isinstance(args.test_seeds, list) or isinstance(args.test_seeds, tuple):
-        test_seeds = list(map(int, args.test_seeds))
-    elif isinstance(args.test_seeds, str):
-        start, end = map(int, args.test_seeds.split(","))
-        test_seeds = list(range(start, end + 1))
-    else:
-        raise NotImplementedError
+    save_options(options=selected_mask_models, 
+                 trajectories=trajectories,
+                 exp_id=args.exp_id, 
+                 logger=logger)
     
-    if args.env_id == "ComboGrid":
-        test_problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
-        test_seeds = test_seeds * (len(test_problems)//len(test_seeds) + 1)
-        test_seeds = test_seeds[:len(test_problems)]
-    elif args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-        test_problems = [args.test_env_id + str(seed) for seed in test_seeds]
+    utils.logger_flush(logger)
 
-    lrs = args.learning_rate
-    clip_coef = args.clip_coef
-    ent_coef = args.ent_coef
-    for i, (problem, seed) in enumerate(zip(test_problems, test_seeds)):
-        logger.info(f"Testing on {problem}")
-        args.learning_rate = lrs[i]
-        args.clip_coef = clip_coef[i]
-        args.ent_coef = ent_coef[i]
-        train_extended_ppo(selected_models_of_masks, problem, seed, args, logger)
+    levin_loss.print_output_subpolicy_trajectory(selected_mask_models, trajectories, logger=logger)
+    utils.logger_flush(logger)
 
 
 @timing_decorator
@@ -737,163 +686,120 @@ def whole_dec_options_training_data_levin_loss():
     This function performs hill climbing in the space of masks of a ReLU neural network
     to minimize the Levin loss of a given data set. 
     """
-    args = tyro.cli(Args)
-    args.log_path += "_" + args.exp_name
+    args = process_args()
     
     # Logger configurations
-    logger = utils.get_logger('whole_dec_option_logger', args.log_level, args.log_path)
+    logger = utils.get_logger('whole_dec_options', args.log_level, args.log_path, suffix="option_extraction")
 
-    hidden_size = args.hidden_size
-    # option_length = args.option_length
-    option_length = list(range(2,5))
     game_width = args.game_width
-    number_restarts = args.number_restarts
     number_actions = 3
-    l1_lambda = args.l1_lambda
-    
-    if isinstance(args.seeds, list) or isinstance(args.seeds, tuple):
-        seeds = list(map(int, args.seeds))
-    elif isinstance(args.seeds, str):
-        start, end = map(int, args.seeds.split(","))
-        seeds = list(range(start, end + 1))
-    else:
-        raise NotImplementedError
-        
-    if args.env_id == "ComboGrid":
-        problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
-        seeds = seeds * (len(problems)//len(seeds) + 1)
-        seeds = seeds[:len(problems)]
-    elif args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-        problems = [args.env_id + str(seed) for seed in seeds]
+
+    trajectories = regenerate_trajectories(args, verbose=True, logger=logger)
+    max_length = max([len(t.get_trajectory()) for t in trajectories.values()])
+    option_length = list(range(2, max_length + 1))
+    args.exp_id += f'_olen{",".join(map(str, option_length))}'
 
     params = {
-        'hidden_size': hidden_size,
+        'hidden_size': args.hidden_size,
         'option_length': option_length,
         'game_width': game_width,
-        'number_restarts': number_restarts,
+        'number_restarts': args.number_restarts,
         'number_actions': number_actions,
-        'l1_lambda': l1_lambda,
-        'problems': problems
+        'l1_lambda': args.l1_lambda,
+        'problems': args.problems
     }
 
-    logger.info("Parameters:")
+    buffer = "Parameters:\n"
     for key, value in params.items():
-        logger.info(f"{key}: {value}")
+        buffer += (f"{key}: {value}\n")
+    logger.info(buffer)
 
-    trajectories = regenerate_trajectories(problems, args, seeds=seeds, verbose=True, logger=logger)
     utils.logger_flush(logger)
 
     previous_loss = None
     best_loss = None
 
-    loss = LevinLossActorCritic()
+    loss = LevinLossActorCritic(logger)
 
     selected_masks = []
-    selected_options_n_iterations = []
-    selected_models_of_masks = []
-    selected_options_problem = []
+    selected_option_sizes = []
+    selected_mask_models = []
 
     # the greedy loop of selecting options (masks)
     while previous_loss is None or best_loss < previous_loss:
         previous_loss = best_loss
 
         best_loss = None
-        best_mask = None
-        best_n_iterations = None
-        model_best_mask = None
-        problem_mask = None
+        best_mask_model = None
 
-        for seed, problem in zip(seeds, problems):
-            logger.info(f'Problem: {problem} Seeds: {seed}')
+        for seed, problem, model_directory in zip(args.seeds, args.problems, args.model_paths):
+            model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
+            logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
             if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
                 env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
-                model_path = f'binary/simple-crossing-s9n1-v0/PPO-gw{args.game_width}' + \
-                            f'-h{args.hidden_size}-sd{seed}_MODEL.pt'
             else:
                 env = ComboGym(rows=game_width, columns=game_width, problem=problem)
-                model_path = f'binary/PPO-{problem}-gw{args.game_width}-h{args.hidden_size}-l1l{args.l1_lambda}_MODEL.pt'
-            
-            agent = PPOAgent(env, hidden_size=hidden_size)
+
+            agent = PPOAgent(env, hidden_size=args.hidden_size)
             agent.load_state_dict(torch.load(model_path))
 
-            for i in range(2, 15):
-                mask = torch.tensor([-1] * hidden_size).view(1,-1)
-                levin_loss = loss.compute_loss(selected_masks + [mask], selected_models_of_masks + [agent], problem, trajectories, number_actions, selected_options_n_iterations + [i])
+            for i in range(2, max_length + 1):
+                mask = torch.tensor([-1] * args.hidden_size).view(1,-1)
+                levin_loss = loss.compute_loss(selected_masks + [mask], selected_mask_models + [agent], problem, trajectories, number_actions, selected_option_sizes + [i])
             
                 if best_loss is None or levin_loss < best_loss:
                     best_loss = levin_loss
-                    best_mask = mask
-                    model_best_mask = agent
-                    best_n_iterations = i
-                    problem_mask = problem
-            utils.logger_flush(logger)
+                    best_mask_model = agent
+                    agent.to_option(mask, i, problem)
+
+        logger.info(f'Summary of option #{len(selected_mask_models)}: \nBest Mask:{best_mask_model.mask}, best_loss={best_loss}, option_size={best_mask_model.option_size}, option problem={best_mask_model.problem_id}\nPrevious selected loss:{previous_loss}')
+        utils.logger_flush(logger)
         logger.debug("\n")
 
         # we recompute the Levin loss after the automaton is selected so that we can use 
         # the loss on all trajectories as the stopping condition for selecting masks
-        selected_masks.append(best_mask)
-        selected_options_n_iterations.append(best_n_iterations)
-        selected_models_of_masks.append(model_best_mask)
-        selected_options_problem.append(problem_mask)
-        best_loss = loss.compute_loss(selected_masks, selected_models_of_masks, "", trajectories, number_actions, selected_options_n_iterations)
+        selected_masks.append(best_mask_model.mask)
+        selected_mask_models.append(best_mask_model)
+        selected_option_sizes.append(best_mask_model.option_size)
+        best_loss = loss.compute_loss(selected_masks, selected_mask_models, "", trajectories, number_actions, selected_option_sizes)
 
         logger.info(f"Levin loss of the current set: {best_loss}")
         utils.logger_flush(logger)
 
     # remove the last automaton added
-    num_options = len(selected_masks)
-    selected_masks = selected_masks[0:num_options - 1]
-    selected_models_of_masks = selected_models_of_masks[:num_options - 1]
-    selected_options_n_iterations = selected_options_n_iterations[:num_options - 1]
-    for mask, model, n_iterations in zip(selected_masks, selected_models_of_masks, selected_options_n_iterations):
-        model.to_option(mask, n_iterations)
+    num_options = len(selected_mask_models)
+    selected_mask_models = selected_mask_models[:num_options - 1]
 
-    utils.logger_flush(logger)
-    loss.print_output_subpolicy_trajectory(selected_models_of_masks, selected_masks, selected_options_problem, trajectories, selected_options_n_iterations, logger=logger)
-
-    utils.logger_flush(logger)
     # printing selected options
-    logger.info("Selected masks:")
-    for i in range(len(selected_masks)):
-        logger.info(selected_masks[i])
+    logger.info("Selected options:")
+    for i in range(len(selected_mask_models)):
+        logger.info(f"Option #{i}:\n" + 
+                    f"mask={selected_mask_models[i].mask}\n" +
+                    f"size={selected_mask_models[i].option_size}\n" +
+                    f"problem={selected_mask_models[i].problem_id}")
 
-    utils.logger_flush(logger)
-    logger.info("Testing on each grid cell")
-    for seed, problem in zip(seeds, problems):
-        logger.info(f"Testing on each cell..., {problem}")
-        loss.evaluate_on_each_cell(selected_models_of_masks, selected_masks, selected_options_problem, problem, args=args, seed=seed, logger=logger)
-
-    utils.logger_flush(logger)
-    if isinstance(args.test_seeds, list) or isinstance(args.test_seeds, tuple):
-        test_seeds = list(map(int, args.test_seeds))
-    elif isinstance(args.test_seeds, str):
-        start, end = map(int, args.test_seeds.split(","))
-        test_seeds = list(range(start, end + 1))
-    else:
-        raise NotImplementedError
+    save_options(options=selected_mask_models, 
+                 trajectories=trajectories,
+                 exp_id=args.exp_id, 
+                 logger=logger)
     
-    if args.env_id == "ComboGrid":
-        test_problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
-        test_seeds = test_seeds * (len(test_problems)//len(test_seeds) + 1)
-        test_seeds = test_seeds[:len(test_problems)]
-    elif args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-        test_problems = [args.test_env_id + str(seed) for seed in test_seeds]
+    utils.logger_flush(logger)
 
-    lrs = args.learning_rate
-    clip_coef = args.clip_coef
-    ent_coef = args.ent_coef
-    for i, (problem, seed) in enumerate(zip(test_problems, test_seeds)):
-        logger.info(f"Retraining on {problem}")
-        args.learning_rate = lrs[i]
-        args.clip_coef = clip_coef[i]
-        args.ent_coef = ent_coef[i]
-        train_extended_ppo(selected_models_of_masks, problem, seed, args, logger)
+    loss.print_output_subpolicy_trajectory(selected_mask_models, trajectories, logger=logger)
+    utils.logger_flush(logger)
+
+    # logger.info("Testing on each grid cell")
+    # for seed, problem in zip(args.seeds, args.problems):
+    #     logger.info(f"Testing on each cell..., {problem}")
+    #     loss.evaluate_on_each_cell(selected_mask_models, problem, args=args, seed=seed, logger=logger)
+
+    # utils.logger_flush(logger)
 
 
 def main():
-    hill_climbing_mask_space_training_data()
+    # hill_climbing_mask_space_training_data()
     # whole_dec_options_training_data_levin_loss()
-    # hill_climbing_all_segments()
+    hill_climbing_all_segments()
 
 if __name__ == "__main__":
     main()
