@@ -8,7 +8,7 @@ from logging import Logger
 from typing import Union, List
 from agents.policy_guided_agent import PPOAgent
 from torch.utils.tensorboard import SummaryWriter
-from extract_subpolicy_ppo import load_options
+from pipelines.extract_subpolicy_ppo import load_options
 from dataclasses import dataclass
 from training.train_ppo_agent import train_ppo
 from environemnts.environments_minigrid import make_env_four_rooms
@@ -24,6 +24,8 @@ class Args:
     """
     seeds: Union[List[int], str] = (0,1,2)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
+    problems: List[str] = tuple()
+    """To be filled"""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
     cpus: int = 4
@@ -46,7 +48,7 @@ class Args:
     test_env_id: str = "MiniGrid-FourRooms-v0"
     """the id of the environment for testing
     choices from [ComboGrid, MiniGrid-FourRooms-v0]"""
-    test_problems: List[str] = []
+    test_problems: List[str] = tuple()
     """"""
     test_seeds: Union[List[int], str] = (1,2,3)
     """the seeds of the environment for testing"""
@@ -147,7 +149,7 @@ def main(args: Args):
 
     logger = utils.get_logger("testing_by_training_logger", args.log_level, args.log_path)
 
-    options, _ = load_options(args.exp_id)
+    options, _ = load_options(args.exp_id, args)
 
     lrs = args.learning_rate
     clip_coef = args.clip_coef
@@ -167,8 +169,14 @@ if __name__ == "__main__":
     if args.test_exp_id == "":
         args.test_exp_id = f'{args.test_exp_name}_{args.env_id}' + \
         f'_gw{args.game_width}_h{args.hidden_size}_l1{args.l1_lambda}'
-    args.log_path = os.path.join(args.log_path, args.exp_id)
+    args.log_path = os.path.join(args.log_path, args.test_exp_id)
     args.log_path += f"/test_by_training"
+
+    if args.env_id == "ComboGrid":
+        args.problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
+
+    elif args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
+        args.problems = [args.env_id + f"_{seed}" for seed in args.seeds]
     
     if isinstance(args.test_seeds, list) or isinstance(args.test_seeds, tuple):
         args.test_seeds = list(map(int, args.test_seeds))

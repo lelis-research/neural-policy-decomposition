@@ -35,7 +35,7 @@ def main(args):
     
     loss = LogitsLossActorCritic(logger)
 
-    options, _ = load_options(args.exp_id)
+    options, _ = load_options(args.exp_id, args)
 
     logger.info("Testing on each grid cell")
     for seed, problem in zip(args.seeds, args.problems):

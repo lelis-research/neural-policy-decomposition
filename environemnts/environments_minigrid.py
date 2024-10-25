@@ -83,7 +83,7 @@ class MiniGridWrap(gym.Env):
         if self.options and action >= len(self.options):
             option = self.options[action - self.n_discrete_actions]
             for _ in range(option.option_size):
-                option_action = option.get_action_with_mask(torch.tensor(self.get_observation(), dtype=torch.float32).view(1, -1))
+                option_action, _ = option.get_action_with_mask(torch.tensor(self.get_observation(), dtype=torch.float32).view(1, -1))
                 terminal, truncated, reward = self.take_basic_action(option_action)
                 reward_sum += reward + self.step_reward
                 if terminal or truncated:

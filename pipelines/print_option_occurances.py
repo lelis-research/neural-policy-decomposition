@@ -24,7 +24,7 @@ def main(args):
     logger = utils.get_logger("print_option_occurances_logger", args.log_level, log_path)
     loss = LogitsLossActorCritic(logger)
 
-    options, trajectories = load_options(args.exp_id)
+    options, trajectories = load_options(args.exp_id, args)
 
     loss.print_output_subpolicy_trajectory(options=options, 
                                             trajectories=trajectories, 

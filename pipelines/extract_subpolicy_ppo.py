@@ -157,7 +157,7 @@ def save_options(options: List[PPOAgent], trajectories: dict, exp_id: str, logge
     logger.info(f"Options saved to {save_dir}")
 
 
-def load_options(exp_id):
+def load_options(exp_id, args):
     """
     Load the saved options (masks, models, and number of iterations) from the specified directory.
 
@@ -177,11 +177,18 @@ def load_options(exp_id):
     n = len(model_files)
     options = [None] * n
 
-    for model_file in model_files:
+    for seed, model_file in zip(args.seeds, model_files):
         model_path = os.path.join(save_dir, model_file)
         checkpoint = torch.load(model_path)
         
-        model = PPOAgent(envs=None)  # Create a new PPOAgent instance with default parameters
+        if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
+            envs = get_training_tasks_simplecross(view_size=args.game_width, seed=seed)
+        elif args.env_id == "MiniGrid-FourRooms-v0":
+            raise NotImplementedError("Environment creation not implemented!")
+        else:
+            envs = ComboGym(rows=args.game_width, columns=args.game_width, problem=args.problem)
+
+        model = PPOAgent(envs=envs, hidden_size=args.hidden_size)  # Create a new PPOAgent instance with default parameters
         model.load_state_dict(checkpoint['model_state_dict'])
         model.to_option(checkpoint['mask'], checkpoint['n_iterations'], checkpoint['problem'])
         i = checkpoint['id']

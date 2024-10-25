@@ -54,7 +54,7 @@ class ComboGym(gym.Env):
         if self.option_index and action >= self.option_index:
             reward_sum = 0
             for _ in range(self.option_sizes[action - self.option_index]):
-                option_action = self.program_stack[action].get_action_with_mask(torch.tensor(self.get_observation(), dtype=torch.float32).view(1, -1))
+                option_action, _ = self.program_stack[action].get_action_with_mask(torch.tensor(self.get_observation(), dtype=torch.float32).view(1, -1))
                 obs, reward, terminated, truncated, _ = process_action(option_action)
                 reward_sum += reward
                 if terminated or truncated:
