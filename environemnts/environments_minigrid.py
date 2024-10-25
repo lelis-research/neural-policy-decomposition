@@ -41,11 +41,11 @@ class MiniGridWrap(gym.Env):
 
     def one_hot_encode(self, observation):
         OBJECT_TO_ONEHOT = {
-            0: [0,0,0,0],  # Empty space or floor
-            1: [1,0,0,0],  # Wall
-            2: [0,1,0,0],  # Door
-            8: [0,0,1,0],  # Key
-            10: [0,0,0,1], # Goal
+            0: [0,0,0,0],  # Unseen
+            1: [1,0,0,0],  # Empty space
+            2: [0,1,0,0],  # Wall
+            8: [0,0,1,0],  # Goal
+            10: [0,0,0,1], # Agent
         }
         one_hot = [OBJECT_TO_ONEHOT[int(x)] for x in observation]
         return np.array(one_hot).flatten()
@@ -151,7 +151,7 @@ def get_training_tasks_simplecross(view_size=7, seed=0):
 def get_test_tasks_fourrooms(view_size=7, seed=0):
     return MiniGridWrap(
             gymnasium.make("MiniGrid-FourRooms-v0"),
-            max_episode_steps=19*19, n_discrete_actions=3, view_size=view_size, seed=8,
+            max_episode_steps=19*19, n_discrete_actions=3, view_size=view_size, seed=seed,
     )
 
 

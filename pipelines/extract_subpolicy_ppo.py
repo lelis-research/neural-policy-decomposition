@@ -102,7 +102,7 @@ def regenerate_trajectories(args: Args, verbose=False, logger=None):
         model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
         if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
             env = get_training_tasks_simplecross(view_size=args.game_width, seed=seed)
-        elif args.env_id == "FourRooms":
+        elif args.env_id == "MiniGrid-FourRooms-v0":
             raise NotImplementedError("Environment creation not implemented!")
         else:
             env = ComboGym(rows=args.game_width, columns=args.game_width, problem=problem)
