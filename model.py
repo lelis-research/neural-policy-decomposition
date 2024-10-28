@@ -44,7 +44,7 @@ class QuantizedRNN(nn.Module):
         # Apply quantization to the hidden state (-1 and 1 quantization)
         quantized_hidden = STEQuantize.apply(hidden)
         combined_2 = torch.cat((x, quantized_hidden), 1)
-        output_1 = torch.tanh(self.in2output(combined_2))
+        output_1 = torch.tanh(self.in2output(combined))
         output_2 = self.in3output(output_1)  # Only the hidden state is passed to the final output layer
         output = self.outsoftmax(output_2)
 
