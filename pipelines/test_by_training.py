@@ -116,8 +116,7 @@ def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, seed: int,
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
     
     model_path = f'binary/models/{test_exp_id}/extended_MODEL.pt'
-    os.makedirs(model_path, exist_ok=True)
-
+    
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
@@ -147,7 +146,7 @@ def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, seed: int,
 
 def main(args: Args):
 
-    logger = utils.get_logger("testing_by_training_logger", args.log_level, args.log_path)
+    logger = utils.get_logger("testing_by_training_logger", args.log_level, args.log_path, suffix="test_by_training")
 
     options, _ = load_options(args.exp_id, args)
 
@@ -170,7 +169,6 @@ if __name__ == "__main__":
         args.test_exp_id = f'{args.test_exp_name}_{args.env_id}' + \
         f'_gw{args.game_width}_h{args.hidden_size}_l1{args.l1_lambda}'
     args.log_path = os.path.join(args.log_path, args.test_exp_id)
-    args.log_path += f"/test_by_training"
 
     if args.env_id == "ComboGrid":
         args.problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
@@ -186,11 +184,11 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError
     
-    if args.env_id == "ComboGrid":
+    if args.test_env_id == "ComboGrid":
         args.test_problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
         args.test_seeds = args.test_seeds * (len(args.test_problems)//len(args.test_seeds) + 1)
         args.test_seeds = args.test_seeds[:len(args.test_problems)]
-    elif args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
+    elif args.test_env_id == "MiniGrid-FourRooms-v0":
         args.test_problems = [args.test_env_id + str(seed) for seed in args.test_seeds]
 
     main(args)
