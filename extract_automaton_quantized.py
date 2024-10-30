@@ -88,7 +88,7 @@ class Automaton:
                     self._modes[con_h] = Mode(con_h, set())
                     self._adjacency_dict[con_h] = set()
     
-    def transition(self, env, hidden_state=None):
+    def transition(self, env_init, hidden_state=None, apply_actions=True):
         if hidden_state is None:
              mode = self._initial_mode
              h = torch.tensor(mode._h).view(1, -1)
@@ -99,6 +99,7 @@ class Automaton:
         actions = []
         terminate = False
         ep_len = 0
+        env = copy.deepcopy(env_init)
         while not terminate and ep_len < 12:
             x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
             prob_actions, h = self._model(x_tensor, h)
@@ -114,12 +115,16 @@ class Automaton:
                     h = torch.tensor(mode._h).view(1, -1)
             else:
                 terminate = True
+            # if not terminate:
             action = torch.argmax(prob_actions).item()
             actions.append(action)
-            env.apply_action(action)
+            # env.apply_action(action)
             ep_len += 1
         if ep_len >= 12:
             return False, actions
+        if apply_actions:
+            for a in actions:
+                env_init.apply_action(a)
         return True, actions
     
     def print_image(self, filename):

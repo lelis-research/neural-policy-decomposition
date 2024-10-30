@@ -58,7 +58,7 @@ class QuantizedRNN(nn.Module):
         l1_norm = sum(p.abs().sum() for name, p in self.named_parameters() if "bias" not in name)
         return lambda_l1 * l1_norm
     
-    def train(self, trajectory, l1_coef):
+    def train(self, trajectory, l1_coef=0.0):
         h = self.init_hidden()
         step_loss = 0
         self._optimizer.zero_grad()

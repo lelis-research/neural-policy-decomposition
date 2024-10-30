@@ -1,6 +1,7 @@
 import copy
 import math
 import torch
+import pickle
 from extract_automaton_quantized import Automaton
 from extract_automaton_quantized import SubAutomataExtractor
 
@@ -56,7 +57,7 @@ class LevinLossAutomaton:
                     if joint_problem_name_list[j] == problem_automata:
                         continue
                     finished, actions = automaton.transition(copy.deepcopy(t[j][0]))
-                    print(finished, actions)
+                    # print(finished, actions)
 
                     if self.is_automaton_applicable(t, actions, finished, j):
                         M[j + len(actions)] = min(M[j + len(actions)], M[j] + 1)
@@ -242,3 +243,6 @@ def extract_options():
 automata = extract_options()
 for i, a in enumerate(automata):
     a.print_image('images/automata/sub-' + a._problem + '-quantized-'+str(i))
+with open("selected_options.pkl", "wb") as file:
+    pickle.dump(automata, file)
+
