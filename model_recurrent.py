@@ -11,6 +11,15 @@ class IdentityLayer(nn.Module):
     def forward(self, x):
         return x
 
+class STEQuantize(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x):
+        return torch.sign(x)  # Quantize to -1 or 1
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output 
+
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
     torch.nn.init.constant_(layer.bias, bias_const)
@@ -155,7 +164,8 @@ class GruAgent(nn.Module):
         for h, d in zip(hidden, done):
             # print('d: ', d)
             h, gru_state = self.gru(h.unsqueeze(0), (1.0 - d).view(1, -1, 1) * gru_state)
-            new_hidden += [h]
+            quantized_hidden = STEQuantize.apply(h)
+            new_hidden += [quantized_hidden]
         new_hidden = torch.flatten(torch.cat(new_hidden), 0, 1)
         return new_hidden, gru_state
 

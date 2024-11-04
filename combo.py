@@ -4,9 +4,11 @@ import math
 import gc
 
 class Problem:
-    def __init__(self, rows, columns, problem_str):
+    def __init__(self, rows, columns, problem_str, random_initial=False):
         self.rows = rows
         self.columns = columns
+        self.problem = problem_str
+        self.rand_init = random_initial
         self.initial, self.goal = self._parse_problem(problem_str)
 
     def _parse_problem(self, problem_str):
@@ -24,10 +26,19 @@ class Problem:
 
             initial = (center1, center2)
         else:
-            initial = self._parse_position(problem_str[:2])
             goal = self._parse_position(problem_str[3:])
+            if not self.rand_init:
+                initial = self._parse_position(problem_str[:2])
+            else:
+                initial = (random.randint(0,self.rows-1),random.randint(0,self.columns-1))
+                while initial == goal:
+                    initial = (random.randint(0,self.rows-1),random.randint(0,self.columns-1))
         return initial, goal
-
+    
+    def get_initial(self):
+        self.initial, self.goal = self._parse_problem(self.problem)
+        return self.initial
+    
     def _parse_position(self, pos_str):
         if pos_str[0] == 'T':
             row = 0
@@ -55,14 +66,14 @@ class Game:
     The (0, 0) in the matrices show top and left and it goes to the bottom and right as 
     the indices increases.
     """
-    def __init__(self, rows, columns, problem_str, options=None, partial_observability=True):
+    def __init__(self, rows, columns, problem_str, options=None, partial_observability=True, random_inital=False):
         self._rows = rows
         self._columns = columns
         self.last_action = None
         self.partial_obs = partial_observability
         self.options = options
-
-        self.problem = Problem(rows, columns, problem_str)
+        self.random_init = random_inital
+        self.problem = Problem(rows, columns, problem_str, random_inital)
         
         self.reset()
 
@@ -96,7 +107,7 @@ class Game:
 
     def reset(self):
         self._matrix_unit = np.zeros((self._rows, self._columns))
-        initial = self.problem.initial
+        initial = self.problem.get_initial()
         self._x, self._y = initial
         self._matrix_unit[self._x][self._y] = 1
         self.last_action = None

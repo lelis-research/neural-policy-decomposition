@@ -4,6 +4,8 @@ import torch
 import numpy as np
 import pickle
 from bisect import insort
+import tyro
+from args import Args
 
 from combo import Game
 from model import CustomRNN, CustomRelu, QuantizedRNN
@@ -169,13 +171,14 @@ class PolicyGuidedAgent:
 def main():
     hidden_size = 4
     game_width = 3
-
+    # args = tyro.cli(Args)
+    # problem = args.problem
     # problem = "test"
     problem = "TL-BR"
     # problem = "TR-BL"
     # problem = "BR-TL"
     # problem = "BL-TR"
-    env = Game(game_width, game_width, problem)
+    env = Game(game_width, game_width, problem, random_inital=True)
 
     use_option = False
     if use_option:
@@ -187,7 +190,7 @@ def main():
         policy_agent = PolicyGuidedAgent(options=options)
         rnn = QuantizedRNN(21, 4, (len(options)+len(env.get_actions())))
     else:
-        rnn = CustomRNN(21, 4, 3)
+        rnn = QuantizedRNN(21, 4, 3)
         policy_agent = PolicyGuidedAgent()
 
                 
@@ -199,16 +202,21 @@ def main():
     trajectories = OrderedLimitedList(k)
     try:
         for i in range(300):
-            for _ in range(1000):
-                env.reset()
-                trajectory, _ = policy_agent.run(env, rnn, length_cap=trajectories.get_longest_length(), verbose=False)
+            env.reset()
+            shortest_trajectory_length = np.inf
+            best_trajectory = None
+            for _ in range(500):
+                env1 = copy.deepcopy(env)
+                trajectory, _ = policy_agent.run(env1, rnn, length_cap=shortest_trajectory_length, verbose=False)
 
                 if len(trajectory.get_trajectory()) < trajectories.get_longest_length():
                     trajectories.add(trajectory)
-
-            print('i: Trajectory length: ', i, trajectories.get_shortest_length())
+                if len(trajectory.get_trajectory()) < shortest_trajectory_length:
+                    shortest_trajectory_length = len(trajectory.get_trajectory())
+                    best_trajectory = trajectory
+            print('i: Trajectory length: ', i, shortest_trajectory_length)
             for _ in range(20):
-                loss = rnn.train(trajectories.items[0])
+                loss = rnn.train(best_trajectory)
                 print(loss)
             print()
         
@@ -216,13 +224,13 @@ def main():
         env.reset()
         policy_agent.run(env, rnn, greedy=True, length_cap=20, verbose=True)
         rnn.print_weights()
-        trajectories.save('trajectories/game-width' + str(game_width) + '-' + problem + '-noreg-' + str(hidden_size) + '.txt')
-        torch.save(rnn.state_dict(), 'binary/game-width' + str(game_width) + '-' + problem + '-noreg-' + str(hidden_size) + '-2-model.pth')
+        trajectories.save('trajectories/game-width' + str(game_width) + '-' + problem + '-noreg-' + str(hidden_size) + '.pkl')
+        torch.save(rnn.state_dict(), 'binary/game-width' + str(game_width) + '-' + problem + '-noreg-' + str(hidden_size) + '-mult-traj-model.pth')
    
     except KeyboardInterrupt:
         print("Job cancelled. Saving model and trajectories...")
-        trajectories.save('trajectories/game-width' + str(game_width) + '-' + problem + '-noreg-' + str(hidden_size) + '.txt')
-        torch.save(rnn.state_dict(), 'binary/game-width' + str(game_width) + '-' + problem + '-noreg-' + str(hidden_size) + '-2-model.pth')
+        trajectories.save('trajectories/game-width' + str(game_width) + '-' + problem + '-noreg-' + str(hidden_size) + '.pkl')
+        torch.save(rnn.state_dict(), 'binary/game-width' + str(game_width) + '-' + problem + '-noreg-' + str(hidden_size) + '-mult-traj-model.pth')
         print("Saved model and trajectories!")
 
 if __name__ == "__main__":

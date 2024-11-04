@@ -24,7 +24,7 @@ from model_recurrent import LstmAgent, GruAgent
     
 def make_env(env_id, idx, capture_video, run_name, problem):
     def thunk():
-        env = ComboGym(problem=problem)
+        env = ComboGym(problem=problem, random_initial=True)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
