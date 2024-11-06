@@ -25,13 +25,13 @@ class Args:
     env_id: str = "ComboGrid-v0"
 
     """the id of the environment"""
-    total_timesteps: int = 10000000
+    total_timesteps: int = 2000000
     """total timesteps of the experiments"""
-    learning_rate: float = 2.5e-4
+    learning_rate: float = 5e-4
     """the learning rate of the optimizer"""
     num_envs: int = 8
     """the number of parallel game environments"""
-    num_steps: int = 2048
+    num_steps: int = 1024
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: bool = True
     """Toggle learning rate annealing for policy and value networks"""
@@ -45,11 +45,11 @@ class Args:
     """the K epochs to update the policy"""
     norm_adv: bool = True
     """Toggles advantages normalization"""
-    clip_coef: float = 0.1
+    clip_coef: float = 0.15
     """the surrogate clipping coefficient"""
     clip_vloss: bool = True
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
-    ent_coef: float = 0.01
+    ent_coef: float = 0.02
     """coefficient of the entropy"""
     vf_coef: float = 0.5
     """coefficient of the value function"""
@@ -63,7 +63,7 @@ class Args:
     "weight decay for l2 regularization"
     l1_lambda: float = 0
     "l1 lambda regularization"
-    hidden_size: int = 4
+    hidden_size: int = 32
     "size of RNN hidden states"
     problem: str = "TL-BR"
     "Problem"
