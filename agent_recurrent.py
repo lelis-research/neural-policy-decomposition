@@ -22,9 +22,9 @@ from combo_gym import ComboGym
 from args import Args
 from model_recurrent import LstmAgent, GruAgent
     
-def make_env(env_id, idx, capture_video, run_name, problem):
+def make_env(env_id, idx, capture_video, run_name, problem, episode_length=None):
     def thunk():
-        env = ComboGym(problem=problem, random_initial=True)
+        env = ComboGym(problem=problem, random_initial=True, episode_length=episode_length)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
@@ -66,8 +66,8 @@ if __name__ == "__main__":
             sync_tensorboard=True,
             config=vars(args),
             name=run_name,
-            monitor_gym=True,
-            save_code=True,
+            monitor_gym=False,
+            save_code=False,
         )
     writer = SummaryWriter(f"runs/{run_name}")
     writer.add_text(
@@ -85,7 +85,7 @@ if __name__ == "__main__":
 
     # env setup
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, i, args.capture_video, run_name, args.problem) for i in range(args.num_envs)],
+        [make_env(args.env_id, i, args.capture_video, run_name, args.problem, args.episode_length) for i in range(args.num_envs)],
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
@@ -100,8 +100,11 @@ if __name__ == "__main__":
         agent = GruAgent(envs, args.hidden_size).to(device)     
         agent.load_state_dict(torch.load("models/gru-32-l1_1e-03-l2_0e+00-BL-TR.pt"))
         agent.train()
-    optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5, weight_decay=args.weight_decay)
-
+    # optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5, weight_decay=args.weight_decay)
+    optimizer = optim.Adam([
+    {'params': agent.critic.parameters(), 'lr': args.value_learning_rate, 'name':'value'},
+    {'params': [p for name, p in agent.named_parameters() if "critic" not in name], 'lr': args.learning_rate, 'eps':1e-5, 'weight_decay':args.weight_decay, 'name':'other'}
+])
     # ALGO Logic: Storage setup
     obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
     actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
@@ -130,11 +133,15 @@ if __name__ == "__main__":
         elif args.rnn_type == 'lstm':
             initial_rnn_state = (next_rnn_state[0].clone(), next_rnn_state[1].clone())
         
-        # Annealing the rate if instructed to do so.
         if args.anneal_lr:
             frac = 1.0 - (iteration - 1.0) / args.num_iterations
-            lrnow = frac * args.learning_rate
-            optimizer.param_groups[0]["lr"] = lrnow
+            lr_value = frac * args.value_learning_rate
+            lr_other = frac * args.learning_rate
+            for param_group in optimizer.param_groups:
+                if param_group.get('name') == 'value':
+                    param_group['lr'] = lr_value
+                elif param_group.get('name') == 'other':
+                    param_group['lr'] = lr_other
 
         for step in range(0, args.num_steps):
             global_step += args.num_envs
@@ -163,6 +170,8 @@ if __name__ == "__main__":
                         print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                         writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                         writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+                        if args.track:
+                            wandb.log({"episodic_return":info["episode"]["r"]})
 
         # bootstrap value if not done
         with torch.no_grad():
@@ -284,7 +293,9 @@ if __name__ == "__main__":
         print("***********************************\n STEP:", global_step)
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
-
+        if args.track:
+            wandb.log({"value_loss": v_loss.item(), "policy_loss":pg_loss.item(),"entropy":entropy_loss.item(), "lr":lr_other, "valuelr":lr_value})
     envs.close()
     writer.close()
+
     torch.save(agent.state_dict(), f'models/{args.problem}/{run_name}.pt')

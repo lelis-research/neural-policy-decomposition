@@ -3,7 +3,7 @@ import numpy as np
 from combo import Game
 
 class ComboGym(gym.Env):
-    def __init__(self, rows=3, columns=3, problem="TL-BR", options=None, partial_observability=True, random_initial=False):
+    def __init__(self, rows=3, columns=3, problem="TL-BR", options=None, partial_observability=True, random_initial=False, episode_length=None):
         self._game = Game(rows, columns, problem, options, partial_observability, random_initial)
         self._rows = rows
         self._columns = columns
@@ -12,6 +12,9 @@ class ComboGym(gym.Env):
         self.observation_space = gym.spaces.Box(low=0, high=1, shape=(len(self._game.get_observation()), ), dtype=np.float64)
         self.action_space = gym.spaces.Discrete(len(self._game.get_actions()))
         self.n_steps = 0
+        self.ep_len = 500
+        if episode_length is not None:
+            self.ep_len = episode_length
 
     def _get_obs(self):
         return self._game.get_observation()
@@ -34,7 +37,7 @@ class ComboGym(gym.Env):
         info = self._game.__repr__()
 
         #Max steps each episode, will probably remove it
-        if self.n_steps == 500:
+        if self.n_steps == self.ep_len:
             trunctuated = True
 
         

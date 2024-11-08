@@ -13,7 +13,7 @@ class Args:
     """if toggled, cuda will be enabled by default"""
     track: bool = False
     """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "cleanRL"
+    wandb_project_name: str = "PPOwithRandomInitial"
     """the wandb's project name"""
     wandb_entity: str = None
     """the entity (team) of wandb's project"""
@@ -25,13 +25,15 @@ class Args:
     env_id: str = "ComboGrid-v0"
 
     """the id of the environment"""
-    total_timesteps: int = 2000000
+    total_timesteps: int = 5000000
     """total timesteps of the experiments"""
     learning_rate: float = 5e-4
     """the learning rate of the optimizer"""
+    value_learning_rate: float = 5e-4
+    """the learning rate of the optimizer for value network"""
     num_envs: int = 8
     """the number of parallel game environments"""
-    num_steps: int = 1024
+    num_steps: int = 30
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: bool = True
     """Toggle learning rate annealing for policy and value networks"""
@@ -63,11 +65,12 @@ class Args:
     "weight decay for l2 regularization"
     l1_lambda: float = 0
     "l1 lambda regularization"
-    hidden_size: int = 32
+    hidden_size: int = 64
     "size of RNN hidden states"
     problem: str = "TL-BR"
     "Problem"
     fine_tune: bool = False
+    episode_length: int = 500
 
     # to be filled in runtime
     batch_size: int = 0

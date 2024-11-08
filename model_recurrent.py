@@ -102,7 +102,7 @@ class GruAgent(nn.Module):
         self.greedy = greedy
         if feature_extractor:
             self.network = nn.Sequential(
-                layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 160)),
+                layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
                 nn.Tanh(),
                 layer_init(nn.Linear(64, 64)),
                 nn.Tanh(),
@@ -167,7 +167,7 @@ class GruAgent(nn.Module):
             quantized_hidden = STEQuantize.apply(h)
             new_hidden += [quantized_hidden]
         new_hidden = torch.flatten(torch.cat(new_hidden), 0, 1)
-        return new_hidden, gru_state
+        return new_hidden, STEQuantize.apply(gru_state)
 
     def get_value(self, x, gru_state, done):
         if self.input_to_actor:
