@@ -55,7 +55,7 @@ if __name__ == "__main__":
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
-    run_name = f"{args.rnn_type}-{args.hidden_size}-l1_{'{:.0e}'.format(args.l1_lambda)}-l2_{'{:.0e}'.format(args.weight_decay)}-{args.problem}-{args.seed}"
+    run_name = f"{args.rnn_type}-{args.hidden_size}-{args.episode_length}-{args.num_steps}-{args.problem}-{args.seed}"
     print(run_name)
     if args.track:
         import wandb
