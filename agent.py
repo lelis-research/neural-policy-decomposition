@@ -4,7 +4,7 @@ import torch
 import numpy as np
 
 from combo import Game
-from model import CustomRNN, CustomRelu 
+from model import CustomRNN, CustomRelu, GumbelSoftmaxRNN, QuantizedRNN 
 
 class Trajectory:
     def __init__(self):
@@ -44,6 +44,8 @@ class PolicyGuidedAgent:
                 self._h = model.init_hidden()
             x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
             if self._is_recurrent:
+                if verbose:
+                    print('Hidden: ', self._h)
                 prob_actions, self._h = model(x_tensor, self._h)
             else:
                 prob_actions = model(x_tensor)
@@ -57,7 +59,7 @@ class PolicyGuidedAgent:
         if greedy:
             self._epsilon = 0.0
 
-        if isinstance(model, CustomRNN):
+        if isinstance(model, CustomRNN) or isinstance(model, QuantizedRNN) or isinstance(model, GumbelSoftmaxRNN):
             self._is_recurrent = True
 
         trajectory = Trajectory()
@@ -123,43 +125,58 @@ class PolicyGuidedAgent:
 def main():
     hidden_size = 4
     game_width = 3
-    # rnn = CustomRNN(27, 5, 3)
-    rnn = CustomRelu(game_width**2 * 2 + 9, hidden_size, 3)
-
-    policy_agent = PolicyGuidedAgent()
 
     # problem = "TL-BR"
     # problem = "TR-BL"
-    problem = "BR-TL"
-    # problem = "BL-TR"
+    # problem = "BR-TL"
+    problem = "BL-TR"
 
-    shortest_trajectory_length = np.inf
-    best_trajectory = None
+    while True:
+        # rnn = CustomRNN(21, hidden_size, 3)
+        rnn = QuantizedRNN(21, hidden_size, 3)
+        # rnn = GumbelSoftmaxRNN(21, hidden_size, 3)
+        # rnn = CustomRelu(game_width**2 * 2 + 9, hidden_size, 3)
 
-    for _ in range(150):
-        for _ in range(500):
-            env = Game(game_width, game_width, problem)
-            trajectory = policy_agent.run(env, rnn, length_cap=shortest_trajectory_length, verbose=False)
+        policy_agent = PolicyGuidedAgent()
 
-            if len(trajectory.get_trajectory()) < shortest_trajectory_length:
-                shortest_trajectory_length = len(trajectory.get_trajectory())
-                best_trajectory = trajectory
+        shortest_trajectory_length = np.inf
+        best_trajectory = None
+        best_model = None
+        best_loss = None
 
-        print('Trajectory length: ', len(best_trajectory.get_trajectory()))
-        for _ in range(10):
-            loss = rnn.train(best_trajectory)
-            print(loss)
-        print()
+        for _ in range(150):
+            for _ in range(500):
+                env = Game(game_width, game_width, problem)
+                trajectory = policy_agent.run(env, rnn, length_cap=shortest_trajectory_length, verbose=False)
 
-    policy_agent._epsilon = 0.0
-    env = Game(game_width, game_width, problem)
-    policy_agent.run(env, rnn, greedy=True, length_cap=None, verbose=True)
-    rnn.print_weights()
+                if len(trajectory.get_trajectory()) < shortest_trajectory_length:
+                    shortest_trajectory_length = len(trajectory.get_trajectory())
+                    best_trajectory = trajectory
 
-    env = Game(game_width, game_width, problem)
-    policy_agent.run_with_relu_state(env, rnn)
+            print('Trajectory length: ', len(best_trajectory.get_trajectory()))
+            for _ in range(10):
+                loss = rnn.train(best_trajectory, l1_coef=0)
 
-    torch.save(rnn.state_dict(), 'binary/game-width' + str(game_width) + '-' + problem + '-relu-' + str(hidden_size) + '-model.pth')
+                if best_model is None or loss < best_loss:
+                    best_loss = loss
+                    best_model = copy.deepcopy(rnn)
+                print(loss)
+            print()
+
+        policy_agent._epsilon = 0.0
+        env = Game(game_width, game_width, problem)
+        trajectory = policy_agent.run(env, best_model, greedy=True, length_cap=15, verbose=True)
+
+        print('Trajectory length = ', len(trajectory.get_trajectory()))
+        if len(trajectory.get_trajectory()) == 12:
+            break
+    best_model.print_weights()
+
+    # env = Game(game_width, game_width, problem)
+    # policy_agent.run_with_relu_state(env, rnn)
+
+    # torch.save(rnn.state_dict(), 'binary/quantized-game-width' + str(game_width) + '-' + problem + '-rnn-noreg-' + str(hidden_size) + '-model.pth')
+    torch.save(rnn.state_dict(), 'binary/delayed-quantized-game-width' + str(game_width) + '-' + problem + '-rnn-noreg-' + str(hidden_size) + '-model.pth')
 
 if __name__ == "__main__":
     main()

@@ -96,16 +96,19 @@ def main():
     This code assumes that the models were already trained for each one of the problems specified in the list problems below.
     """
     problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
-    partition_k = 5
+    # problems = ["TR-BL", "BL-TR", "TL-BR", "BR-TL"]
+    partition_k = 3
+    game_width = 3
+    hidden_size = 6
     sub_automata = {}
     complete_automata = []
     for i in range(len(problems)):
         sub_automata[problems[i]] = []
         print('Extracting from model ', problems[i])
 
-        env = Game(3, 3, problems[i])
-        rnn = CustomRNN(27, 5, 3)
-        rnn.load_state_dict(torch.load('binary/' + problems[i] + '-model.pth'))
+        env = Game(game_width, game_width, problems[i])
+        rnn = CustomRNN(21, hidden_size, 3)
+        rnn.load_state_dict(torch.load('binary/game-width' + str(game_width) + '-' + problems[i] + '-rnn-' + str(hidden_size) + '-model.pth'))
 
         extractor = ExtractAutomaton(partition_k, rnn)
         full_automata = extractor.build_automata(env)
@@ -126,12 +129,12 @@ def main():
     # loading the trajectories from the trained policies
     trajectories = {}
     for problem in problems:
-        env = Game(3, 3, problem)
+        env = Game(game_width, game_width, problem)
         agent = PolicyGuidedAgent()
-        rnn = CustomRNN(27, 5, 3)
+        rnn = CustomRNN(21, hidden_size, 3)
         number_actions = 3
         
-        rnn.load_state_dict(torch.load('binary/' + problem + '-model.pth'))
+        rnn.load_state_dict(torch.load('binary/game-width' + str(game_width) + '-' + problem + '-rnn-' + str(hidden_size) + '-model.pth'))
 
         trajectory = agent.run(env, rnn, greedy=True)
         trajectories[problem] = trajectory
@@ -172,6 +175,7 @@ def main():
         # we recompute the Levin loss after the automaton is selected so that we can use 
         # the loss on all trajectories as the stopping condition for selecting automata
         selected_automata.append(best_automaton)
+        print("Levin loss of the current set prior: ", best_loss)
         best_loss = loss.compute_loss(selected_automata, "", trajectories, number_actions)
 
         print("Levin loss of the current set: ", best_loss)
