@@ -50,7 +50,7 @@ class ComboGym(gym.Env):
             if self.n_steps == 500:
                 truncated = True
             return self.get_observation(), reward, terminated, truncated, {}
-        
+    
         if self.option_index and action >= self.option_index:
             reward_sum = 0
             for _ in range(self.option_sizes[action - self.option_index]):
@@ -67,7 +67,7 @@ class ComboGym(gym.Env):
         if loc:
             return loc == self._game.problem.goal
         return self._game.is_over()
-        
+    
     def get_observation_space(self):
         return self._rows * self._columns * 2 + 9
     

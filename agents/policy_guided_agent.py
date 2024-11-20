@@ -172,13 +172,18 @@ class PPOAgent(nn.Module):
         Returns:
             torch.Tensor: The post-masked outputs of the neurons.
         """
-        if mask is None:
+        if mask is None or len(mask) == 0:
             raise Exception("No mask is set for the agent.")
         relu_out = torch.relu(logits)
         output = torch.zeros_like(logits)
-        output[mask == -1] = relu_out[mask == -1]
-        output[mask == 1] = logits[mask == 1]
+        
+        alpha = 10
+        mask_neg_one = torch.sigmoid(-alpha * (mask + 1))  # close to 1 when mask <= -1
+        mask_pos_one = torch.sigmoid(alpha * (mask - 1))   # close to 1 when mask >= 1
+        mask_between = 1 - mask_neg_one - mask_pos_one     # smooth transition for values in between
 
+        # Create output based on differentiable masks
+        output = mask_neg_one * relu_out + mask_pos_one * logits + mask_between * 0
         return output
 
     def _masked_forward(self, x, mask=None):
@@ -193,7 +198,7 @@ class PPOAgent(nn.Module):
         
         return probs, output_logits
 
-    def run(self, env: Union[ComboGym, MiniGridWrap], length_cap=None, verbose=False):
+    def run(self, env: Union[ComboGym, MiniGridWrap], length_cap=None, detach_tensors=True, verbose=False):
 
         trajectory = Trajectory()
         current_length = 0
@@ -207,7 +212,7 @@ class PPOAgent(nn.Module):
         while not done:
             o = torch.tensor(o, dtype=torch.float32)
             a, _, _, _, logits = self.get_action_and_value(o)
-            trajectory.add_pair(copy.deepcopy(env), a.item(), logits)
+            trajectory.add_pair(copy.deepcopy(env), a.item(), logits, detach=detach_tensors)
 
             if verbose:
                 print(env, a)
@@ -249,21 +254,34 @@ class PPOAgent(nn.Module):
         a = torch.argmax(prob_actions).item()
         return a, logits
     
-    def run_with_mask(self, env, mask, max_size_sequence):
+    def run_with_mask(self, envs, mask, max_size_sequence):
         trajectory = Trajectory()
 
         length = 0
-        while not env.is_over():
-            x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
+        if isinstance(envs, list):
+            env = envs[length]
+            while not env.is_over():
+                env = envs[length]
+                x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
+                a, logits = self.get_action_with_mask(x_tensor, mask)
+                trajectory.add_pair(copy.deepcopy(env), a, logits=logits[0])
 
-            a, logits = self.get_action_with_mask(x_tensor, mask)
-            
-            trajectory.add_pair(copy.deepcopy(env), a, logits=logits[0])
-            env.step(a)
+                length += 1
 
-            length += 1
+                if length >= max_size_sequence:
+                    return trajectory
+        else:
+            while not envs.is_over():
+                x_tensor = torch.tensor(envs.get_observation(), dtype=torch.float32).view(1, -1)
 
-            if length >= max_size_sequence:
-                return trajectory
+                a, logits = self.get_action_with_mask(x_tensor, mask)
+                
+                trajectory.add_pair(copy.deepcopy(envs), a, logits=logits[0])
+                envs.step(a)
+
+                length += 1
+
+                if length >= max_size_sequence:
+                    return trajectory
 
         return trajectory

@@ -50,7 +50,7 @@ class Args:
     choices from [ComboGrid, MiniGrid-FourRooms-v0]"""
     test_problems: List[str] = tuple()
     """"""
-    test_seeds: Union[List[int], str] = (1,2,3)
+    test_seeds: Union[List[int], str] = (41,51,8)
     """the seeds of the environment for testing"""
     total_timesteps: int = 1_500_000
     """total timesteps for testing"""
@@ -166,7 +166,7 @@ def main(args: Args):
 if __name__ == "__main__":
     args = tyro.cli(Args)
     if args.test_exp_id == "":
-        args.test_exp_id = f'{args.test_exp_name}_{args.env_id}' + \
+        args.test_exp_id = f'{args.test_exp_name}_{args.test_env_id}' + \
         f'_gw{args.game_width}_h{args.hidden_size}_l1{args.l1_lambda}'
     args.log_path = os.path.join(args.log_path, args.test_exp_id)
 

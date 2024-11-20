@@ -5,10 +5,10 @@ class Trajectory:
         self._sequence = []
         self.logits = []
 
-    def add_pair(self, state, action, logits=None):
+    def add_pair(self, state, action, logits=None, detach=False):
         self._sequence.append((state, action))
         if logits is not None:
-            self.logits.append(copy.deepcopy(logits.cpu().detach()))
+            self.logits.append(copy.deepcopy(logits.cpu().detach()) if detach else logits)
 
     def concat(self, other):
         self._sequence = self._sequence + copy.deepcopy(other._sequence)

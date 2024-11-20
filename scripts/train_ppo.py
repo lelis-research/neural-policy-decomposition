@@ -20,11 +20,12 @@ class Args:
     """The ID of the finished experiment"""
     exp_name: str = "train_ppo_agent"
     """the name of this experiment"""
-    env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
+    env_id: str = "ComboGrid"
     """the id of the environment corresponding to the trained agent
     choices from [ComboGrid, MiniGrid-SimpleCrossingS9N1-v0]
     """
-    seeds: Union[List[int], str] = (0,1,2)
+    # seeds: Union[List[int], str] = (0,1,2)
+    seeds: Union[List[int], str] = (0,1,2,3)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
@@ -49,12 +50,15 @@ class Args:
     l1_lambda: float = 0
     """"""
     number_actions: int = 3
+
+    # combogrid parameters
+    combogrid_problems: List[str] = ("TL-BR", "TR-BL", "BL-TR", "BR-TL")
     
     # Specific arguments
     total_timesteps: int = 1_500_000
     """total timesteps for testinging"""
-    # learning_rate: Union[List[float], float] = (0.0005, 0.0005, 5e-05) # Vanilla RL
-    learning_rate: Union[List[float], float] = (0.0005, 0.001, 0.001)
+    learning_rate: Union[List[float], float] = (0.0005, 0.0005, 5e-05) # Vanilla RL
+    # learning_rate: Union[List[float], float] = (0.0005, 0.001, 0.001)
     """the learning rate of the optimize for testinging"""
     num_envs: int = 4
     """the number of parallel game environments for testinging"""
@@ -96,7 +100,8 @@ class Args:
     """the number of iterations (computed in runtime)"""
     seed: int = -1
     """the seed (set in runtime)"""
-    
+    problem: str = ""
+    """"""
     log_path: str = "outputs/logs/"
     """The name of the log file"""
     
@@ -169,7 +174,7 @@ def main(args: Args):
         envs = gym.vector.SyncVectorEnv( 
             [make_env_simple_crossing(view_size=game_width, seed=seed) for _ in range(args.num_envs)])
     elif "ComboGrid" in args.env_id:
-        problem = args.env_id[len("ComboGrid_"):]
+        problem = args.problem
         envs = gym.vector.SyncVectorEnv(
             [make_env(rows=game_width, columns=game_width, problem=problem) for _ in range(args.num_envs)],
         )    
@@ -180,7 +185,7 @@ def main(args: Args):
             [make_env_four_rooms(view_size=game_width, seed=seed) for _ in range(args.num_envs)])
     else:
         raise NotImplementedError
-         
+    
     model_path = f'binary/models/{args.exp_id}/ppo_first_MODEL.pt'
 
     train_ppo(envs=envs, 
@@ -217,5 +222,8 @@ if __name__ == "__main__":
         args.clip_coef = clip_coef[i]
         args.learning_rate = lrs[i]
         args.exp_id = f'{exp_id}_lr{args.learning_rate}_clip{args.clip_coef}_ent{args.ent_coef}_sd{args.seed}'
+        if args.env_id == "ComboGrid":
+            args.problem = args.combogrid_problems[i]
+            args.exp_id += f'_{args.problem}'
         main(args)
     

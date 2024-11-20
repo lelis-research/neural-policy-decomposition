@@ -155,7 +155,7 @@ class LevinLossActorCritic:
                         if self.is_applicable(t, actions, j):
                             M[j + len(actions)] = min(M[j + len(actions)], M[j] + 1)
 
-                            mask_name = 'o' + str(i) + "-" + str(options[i].mask.cpu().numpy())
+                            mask_name = 'o' + str(i) + "-" + str(options[i].mask.detach().cpu().numpy())
                             if mask_name not in mask_usage:
                                 mask_usage[mask_name] = []
 

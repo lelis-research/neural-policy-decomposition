@@ -4,6 +4,9 @@ import random
 import torch
 import tyro
 import pickle
+import glob
+import torch.nn.functional as F
+from tqdm import tqdm
 from typing import List
 from utils import utils
 from dataclasses import dataclass
@@ -55,6 +58,13 @@ class Args:
     number_restarts: int = 400
     """number of hill climbing restarts for finding one option"""
 
+    # mask learning
+    mask_learning_rate: float = 0.001
+    """"""
+    mask_learning_steps: int = 1_000
+    """"""
+    max_grad_norm: float = 1.0
+
     log_path: str = "outputs/logs/"
     """The name of the log file"""
     log_level: str = "INFO"
@@ -86,7 +96,7 @@ def process_args() -> Args:
         args.problems = [args.env_id + f"_{seed}" for seed in args.seeds]
         
     return args
-     
+
 
 def regenerate_trajectories(args: Args, verbose=False, logger=None):
     """
@@ -129,12 +139,19 @@ def save_options(options: List[PPOAgent], trajectories: dict, exp_id: str, logge
 
     Parameters:
         options (List[PPOAgent]): The models corresponding to the masks.
-        trajectoreis (Dict[str, Trajectory]): The trajectories corresponding to the these options
+        trajectories (Dict[str, Trajectory]): The trajectories corresponding to the these options
         save_dir (str): The directory where the options will be saved.
     """
     save_dir = f"binary/options/options_{exp_id}"
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
+    else:
+        # Removing every file or directory in the path 
+        for file_path in glob.glob(os.path.join(save_dir, "*")):
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+            elif os.path.isdir(file_path):
+                os.rmdir(file_path)
 
     trajectories_path = os.path.join(save_dir, f'trajectories.pickle')
     with open(trajectories_path, 'wb') as f:
@@ -146,6 +163,7 @@ def save_options(options: List[PPOAgent], trajectories: dict, exp_id: str, logge
     for i, model in enumerate(options):
         
         model_path = os.path.join(save_dir, f'ppo_model_option_{i}.pth')
+        print(model.state_dict().keys())
         torch.save({
             'id': i,
             'model_state_dict': model.state_dict(),
@@ -803,10 +821,199 @@ def whole_dec_options_training_data_levin_loss():
     # utils.logger_flush(logger)
 
 
+def learn_mask(agent: PPOAgent, trajectories: dict, loss: LogitsLossActorCritic, args: Args):
+    # Initialize the masks as trainable parameters with random values
+    mask = torch.nn.Parameter(torch.randn(args.hidden_size), requires_grad=True)
+    optimizer = torch.optim.Adam([mask], lr=args.mask_learning_rate)
+
+    initial_mask = torch.t_copy(mask)
+
+    print(initial_mask)
+
+    steps = 0
+    # with tqdm(total=args.mask_learning_steps, desc="Mask Learning Steps") as pbar:
+    while steps < args.mask_learning_steps:
+        # Iterate over trajectories
+        for _, trajectory in trajectories.items():
+            if steps >= args.mask_learning_steps:
+                break
+
+            # Forward pass with mask
+            envs = trajectory.get_state_sequence()
+            agent.eval()
+
+            # Apply transformations with requires_grad
+            
+            mask_transformed = 1.5 * torch.tanh(mask) + 0.5 * torch.tanh(-3 * mask)
+
+            mask_transformed = mask_transformed.clamp(-0.5, 0.5) * 2
+
+            new_trajectory = agent.run_with_mask(envs, mask_transformed, trajectory.get_length())
+
+            # Compute the mask loss
+            losses = [F.mse_loss(out, tgt) for out, tgt in zip(new_trajectory.logits, trajectory.logits)]
+            mask_loss = torch.mean(torch.stack(losses))
+
+            # Backward pass and optimization
+            optimizer.zero_grad()
+            mask_loss.backward()
+            print(mask_loss)
+            
+            torch.nn.utils.clip_grad_norm_([mask], max_norm=args.max_grad_norm)
+            optimizer.step()
+
+            # Update progress
+            steps += 1
+                # pbar.update(1)  # Update the outer progress bar
+
+    mask_transformed = 1.5 * torch.tanh(mask) + 0.5 * torch.tanh(-3 * mask)
+    mask_transformed = mask_transformed.clamp(-0.5, 0.5) * 2
+    return mask_transformed.detach().data
+
+@timing_decorator
+def learn_options():
+    """
+    This function performs hill climbing in the space of masks of a ReLU neural network
+    to minimize the Levin loss of a given data set. It uses gumbel_softmax to extract 
+    """
+    args = process_args()
+    
+    # Logger configurations
+    logger = utils.get_logger('whole_dec_options', args.log_level, args.log_path, suffix="option_extraction")
+
+    game_width = args.game_width
+    number_actions = 3
+
+    trajectories = regenerate_trajectories(args, verbose=True, logger=logger)
+    max_length = max([len(t.get_trajectory()) for t in trajectories.values()])
+    option_length = list(range(2, max_length + 1))
+    args.exp_id += f'_olen{",".join(map(str, option_length))}'
+
+    params = {
+        'hidden_size': args.hidden_size,
+        'option_length': option_length,
+        'game_width': game_width,
+        'number_restarts': args.number_restarts,
+        'number_actions': number_actions,
+        'l1_lambda': args.l1_lambda,
+        'problems': args.problems
+    }
+
+    buffer = "Parameters:\n"
+    for key, value in params.items():
+        buffer += (f"{key}: {value}\n")
+    logger.info(buffer)
+
+    utils.logger_flush(logger)
+
+    logits_loss = LogitsLossActorCritic(logger)
+    levin_loss = LevinLossActorCritic(logger)
+
+    all_masks_info = []
+
+    for seed, problem, model_directory in zip(args.seeds, args.problems, args.model_paths):
+        model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
+        logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
+        if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
+            env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
+        else:
+            env = ComboGym(rows=game_width, columns=game_width, problem=problem)
+        
+        agent = PPOAgent(env, hidden_size=args.hidden_size)
+        agent.load_state_dict(torch.load(model_path))
+
+        t_length = trajectories[problem].get_length()
+
+        for length in range(2, t_length + 1):
+            for s in range(t_length - length):
+                logger.info(f"Processing option length={length}, segment={s}..")
+                sub_trajectory = {problem: trajectories[problem].slice(s, n=length)}
+                # learn option with this length using gumbel softmax
+                mask = learn_mask(agent, sub_trajectory, logits_loss, args)
+                print(mask)
+                all_masks_info.append((mask, problem, length, model_path, s))
+            utils.logger_flush(logger)
+        
+    logger.debug("\n")
+
+    selected_masks = []
+    selected_option_sizes = []
+    selected_mask_models = []
+    selected_options_problem = []
+
+    previous_loss = None
+    best_loss = None
+
+    # the greedy loop of selecting options (masks)
+    while previous_loss is None or best_loss < previous_loss:
+        previous_loss = best_loss
+
+        best_loss = None
+        best_mask_model = None
+
+        for mask, problem, option_size, model_path, segment in all_masks_info:
+            model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
+            logger.info(f'Extracting from the agent trained on problem={problem}, seed={seed}, segment=({segment},{segment+option_size})')
+            if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
+                env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
+            else:
+                env = ComboGym(rows=game_width, columns=game_width, problem=problem)
+            
+            agent = PPOAgent(env, hidden_size=args.hidden_size)
+            agent.load_state_dict(torch.load(model_path))
+
+            loss_value = levin_loss.compute_loss(masks=selected_masks + [mask], 
+                                           agents=selected_mask_models + [agent], 
+                                           problem_str=problem, 
+                                           trajectories=trajectories, 
+                                           number_actions=number_actions, 
+                                           number_steps=selected_option_sizes + [option_size])
+
+
+            if best_loss is None or loss_value < best_loss:
+                best_loss = loss_value
+                best_mask_model = agent
+                agent.to_option(mask, option_size, problem)    
+
+        # we recompute the Levin loss after the automaton is selected so that we can use 
+        # the loss on all trajectories as the stopping condition for selecting masks
+        selected_masks.append(best_mask_model.mask)
+        selected_option_sizes.append(best_mask_model.option_size)
+        selected_mask_models.append(best_mask_model)
+        selected_options_problem.append(best_mask_model.problem_id)
+        best_loss = levin_loss.compute_loss(selected_masks, selected_mask_models, "", trajectories, number_actions, selected_option_sizes)
+
+        logger.info(f"Added option #{len(selected_mask_models)}; Levin loss of the current selected set: {best_loss} on all trajectories")
+        utils.logger_flush(logger)
+
+    # remove the last automaton added
+    num_options = len(selected_mask_models)
+    selected_mask_models = selected_mask_models[:num_options - 1]
+
+    # printing selected options
+    logger.info("Selected options:")
+    for i in range(len(selected_mask_models)):
+        logger.info(f"Option #{i}:\n" + 
+                    f"mask={selected_mask_models[i].mask}\n" +
+                    f"size={selected_mask_models[i].option_size}\n" +
+                    f"problem={selected_mask_models[i].problem_id}")
+
+    save_options(options=selected_mask_models, 
+                 trajectories=trajectories,
+                 exp_id=args.exp_id, 
+                 logger=logger)
+    
+    utils.logger_flush(logger)
+
+    levin_loss.print_output_subpolicy_trajectory(selected_mask_models, trajectories, logger=logger)
+    utils.logger_flush(logger)
+    
+
 def main():
     # hill_climbing_mask_space_training_data()
     # whole_dec_options_training_data_levin_loss()
-    hill_climbing_all_segments()
+    # hill_climbing_all_segments()
+    learn_options()
 
 if __name__ == "__main__":
     main()
