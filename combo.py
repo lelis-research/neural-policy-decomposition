@@ -3,92 +3,29 @@ import numpy as np
 import math
 import gc
 
-class Problem:
-    def __init__(self, rows, columns, problem_str, random_initial=False):
-        self.rows = rows
-        self.columns = columns
-        self.problem = problem_str
-        self.rand_init = random_initial
-        self.initial, self.goal = self._parse_problem(problem_str)
-
-    def _parse_problem(self, problem_str):
-        if problem_str == "test":
-            if self.rows % 2 == 0 or self.columns % 2 == 0:
-                raise ValueError("Invalid row or column value. Both have to be odd numbers.")
-            center1 = int(self.rows / 2)
-            center2 = int(self.columns / 2)
-            goal = {
-                    (0, center2),
-                    (center1, 0),
-                    (center1, self.columns - 1),
-                    (self.rows - 1, center2),
-                }
-
-            initial = (center1, center2)
-        else:
-            goal = self._parse_position(problem_str[3:])
-            if not self.rand_init:
-                initial = self._parse_position(problem_str[:2])
-            else:
-                initial = (random.randint(0,self.rows-1),random.randint(0,self.columns-1))
-                while initial == goal:
-                    initial = (random.randint(0,self.rows-1),random.randint(0,self.columns-1))
-        return initial, goal
-    
-    def get_initial(self):
-        self.initial, self.goal = self._parse_problem(self.problem)
-        return self.initial
-    
-    def _parse_position(self, pos_str):
-        if pos_str[0] == 'T':
-            row = 0
-        elif pos_str[0] == 'B':
-            row = self.rows - 1
-        elif pos_str[0] == 'M':
-            row = math.floor(self.rows / 2)
-        else:
-            raise ValueError("Invalid row specifier. Use 'T' for top, 'B' for bottom, or 'M' for middle.")
-        
-        if pos_str[1] == 'L':
-            col = 0
-        elif pos_str[1] == 'R':
-            col = self.columns - 1
-        elif pos_str[0] == 'M':
-            col = math.floor(self.columns / 2)
-        else:
-            raise ValueError("Invalid column specifier. Use 'L' for left, 'R' for right, or 'M' for middle.")
-        
-        return (row, col)
-
 
 class Game:
-    """
-    The (0, 0) in the matrices show top and left and it goes to the bottom and right as 
-    the indices increases.
-    """
-    def __init__(self, rows, columns, problem_str, options=None, partial_observability=True, random_inital=False):
+    def __init__(self, rows, columns, problem, partial_observability=True, multiple_initial_states=False):
         self._rows = rows
         self._columns = columns
-        self.last_action = None
-        self.partial_obs = partial_observability
-        self.options = options
-        self.random_init = random_inital
-        self.problem = Problem(rows, columns, problem_str, random_inital)
-        
-        self.reset()
-
+        self._matrix_unit = np.zeros((rows, columns))
         self._matrix_structure = np.zeros((rows, columns))
-        self._matrix_goal = np.zeros((rows, columns))        
+        self._matrix_goal = np.zeros((rows, columns))
+        self._partial_observability = partial_observability
+        self._multiple_initial_states = multiple_initial_states
+        self._last_action = None
+        self._goal = None
+        self._goals_reached = set()
+        self._problem = problem
 
-        
-        self.goal = self.problem.goal
-        
-        self._matrix_unit[self._x][self._y] = 1
-        if isinstance(self.goal, tuple):
-            self._matrix_goal[self.goal[0]][self.goal[1]] = 1
-        else:
-            for g in self.goal:
-               self._matrix_goal[g[0]][g[1]] = 1 
+        self._problem_1 = "TL-BR" # initial location at top-left and goal at bottom-right
+        self._problem_2 = "TR-BL" # initial location at top-right and goal at bottom-left
+        self._problem_3 = "BR-TL" # initial location at bottom-right and goal at top-left
+        self._problem_4 = "BL-TR" # initial location at bottom-left and goal at top-right
+        self._problem_5 = "test"  # initial location in the middle and four goals
+
+        self._set_initial_goal(problem)
+
         # state of current action sequence
         """
         Mapping used: 
@@ -97,6 +34,7 @@ class Game:
         2, 1, 0 -> left (2)
         1, 0, 2 -> right (3)
         """
+        self._state = []
         self._pattern_length = 3
 
         self._action_pattern = {}
@@ -105,15 +43,117 @@ class Game:
         self._action_pattern[(2, 1, 0)] = 2
         self._action_pattern[(1, 0, 2)] = 3
 
-    def reset(self):
-        self._matrix_unit = np.zeros((self._rows, self._columns))
-        initial = self.problem.get_initial()
-        self._x, self._y = initial
+    #TODO: doesn't work with test problem, will fix later
+    def __eq__(self, other):
+        if not isinstance(other, Game):
+            return False
+        return (
+            self._rows == other._rows and
+            self._columns == other._columns and
+            np.array_equal(self._matrix_unit, other._matrix_unit) and
+            np.array_equal(self._matrix_structure, other._matrix_structure) and
+            np.array_equal(self._matrix_goal, other._matrix_goal) and
+            self._partial_observability == other._partial_observability and
+            self._multiple_initial_states == other._multiple_initial_states and
+            self._x == other._x and
+            self._y == other._y and
+            self._x_goal == other._x_goal and
+            self._y_goal == other._y_goal
+        )
+
+    #TODO: doesn't work with test problem, will fix later
+    def __hash__(self):
+        return hash((
+            self._rows,
+            self._columns,
+            self._partial_observability,
+            self._multiple_initial_states,
+            self._x,
+            self._y,
+            self._x_goal,
+            self._y_goal,
+            tuple(self._matrix_unit.ravel()),
+            tuple(self._matrix_structure.ravel()),
+            tuple(self._matrix_goal.ravel())
+        ))
+
+    def _set_initial_goal(self, problem):
+        if problem == self._problem_1:
+            self._matrix_unit[0][0] = 1
+            self._matrix_goal[self._rows - 1][self._columns - 1] = 1
+
+            self._x_goal = self._rows - 1
+            self._y_goal = self._columns - 1
+
+            self._x = 0
+            self._y = 0
+        if problem == self._problem_2:
+            self._matrix_unit[0][self._columns - 1] = 1
+            self._matrix_goal[self._rows - 1][0] = 1
+
+            self._x_goal = self._rows - 1
+            self._y_goal = 0
+
+            self._x = 0
+            self._y = self._columns - 1
+        if problem == self._problem_3:
+            self._matrix_unit[self._rows - 1][self._columns - 1] = 1
+            self._matrix_goal[0][0] = 1
+
+            self._x_goal = 0
+            self._y_goal = 0
+
+            self._x = self._rows - 1
+            self._y = self._columns - 1
+        if problem == self._problem_4:
+            self._matrix_unit[self._rows - 1][0] = 1
+            self._matrix_goal[0][self._columns - 1] = 1
+
+            self._x_goal = 0
+            self._y_goal = self._columns - 1
+
+            self._x = self._rows - 1
+            self._y = 0
+        
+        if problem == self._problem_5:
+            if self._rows % 2 == 0 or self._columns % 2 == 0:
+                print("Rows and columns should be odd!")
+                exit()
+            center1 = int(self._rows / 2)
+            center2 = int(self._columns / 2)
+            self._goal = {
+                    (0, center2),
+                    (center1, 0),
+                    (center1, self._columns - 1),
+                    (self._rows - 1, center2),
+                }
+            self._matrix_unit[center1][center2] = 1
+            for g in self._goal:
+               self._matrix_goal[g[0]][g[1]] = 1 
+               
+            self._x = center1
+            self._y = center2
+
+            self._x_goal = None
+            self._y_goal = None
+        #TODO: Random initial state doesn't work for test problem for now, will fix later
+        if self._multiple_initial_states:
+            finished = False
+
+            self._matrix_unit[self._x][self._y] = 0
+            while not finished:
+                self._x = random.randint(0, self._rows - 1)
+                self._y = random.randint(0, self._columns - 1)
+
+                if self._x != self._x_goal or self._y != self._y_goal:
+                    self._matrix_unit[self._x][self._y] = 1
+                    finished = True
+
+    def set_initial_state(self, x, y):
+        self._matrix_unit[self._x][self._y] = 0
+        self._x = x
+        self._y = y
         self._matrix_unit[self._x][self._y] = 1
-        self.last_action = None
-        self._state = []
-        self.goals_reached = set()
-        gc.collect()
 
     def __repr__(self) -> str:
         str_map = ""
@@ -130,28 +170,41 @@ class Game:
             str_map += "\n"
         return str_map
     
+    def reset(self):
+        self._matrix_unit = np.zeros((self._rows, self._columns))
+        self._matrix_structure = np.zeros((self._rows, self._columns))
+        self._matrix_goal = np.zeros((self._rows, self._columns))
+        self._last_action = None
+        self._goal = None
+        self._goals_reached = set()
+
+        self._set_initial_goal(self._problem)
+
+        self._state = []
+
     def get_observation(self):
-        if self.partial_obs:
+        if self._partial_observability:
             one_hot_matrix_state = np.zeros((3), dtype=int)
-            # if self.last_action is not None:
-            #     one_hot_matrix_state[self.last_action] = 1
+            # if self._last_action is not None:
+            #     one_hot_matrix_state[self._last_action] = 1
         else:
             one_hot_matrix_state = np.zeros((self._pattern_length, self._pattern_length), dtype=int)
             for i, v in enumerate(self._state):
                 one_hot_matrix_state[v][i] = 1
-
+        # return np.concatenate((self._matrix_unit.ravel(), one_hot_matrix_state.ravel()))
         return np.concatenate((self._matrix_unit.ravel(), one_hot_matrix_state.ravel(), self._matrix_goal.ravel()))
+        # return np.concatenate((self._matrix_unit.ravel(), self._matrix_goal.ravel()))
        
     def is_over(self):
-        if isinstance(self.goal, set):
-            return self.goal == self.goals_reached
-        return self._matrix_goal[self._x][self._y] == 1
-    
-    def get_actions(self):
-        if self.options is not None:
-            return [0, 1, 2] + self.options
+        if isinstance(self._goal, set):
+            return self._goal == self._goals_reached
+        if self._matrix_goal[self._x][self._y] == 1:
+            return True
         else:
-            return [0, 1, 2]
+            return False
+
+    def get_actions(self):
+        return [0, 1, 2]
    
     def apply_action(self, action):
         """
@@ -161,10 +214,11 @@ class Game:
         2, 1, 0 -> left (2)
         1, 0, 2 -> right (3)
         """
+        if self._partial_observability:
+            self._last_action = action
         # each column in _state_matrix represents an action
-        if self.partial_obs:
-            self.last_action = action
         self._state.append(action)
+
         if len(self._state) == self._pattern_length:
             action_tuple = tuple(self._state)
             if action_tuple in self._action_pattern:
@@ -192,6 +246,7 @@ class Game:
                         self._matrix_unit[self._x][self._y] = 0
                         self._y += 1
                         self._matrix_unit[self._x][self._y] = 1
-                if isinstance(self.goal, set) and (self._x, self._y) in self.goal and (self._x, self._y) not in self.goals_reached:
-                    self.goals_reached.add((self._x, self._y))
+                # adding the reached goal to the reached goal set, used for determining the termination of the episode        
+                if isinstance(self._goal, set) and (self._x, self._y) in self._goal and (self._x, self._y) not in self._goals_reached:
+                    self._goals_reached.add((self._x, self._y))
             self._state = []

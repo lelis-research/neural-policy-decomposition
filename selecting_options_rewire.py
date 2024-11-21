@@ -2,12 +2,15 @@ import copy
 import math
 import torch
 import pickle
+import random
 from extract_automaton_quantized import Automaton
 from extract_automaton_quantized import SubAutomataExtractor
+from model_recurrent import GruAgent
 
 from extract_automaton import ExtractAutomaton
 import gymnasium as gym
 from combo import Game
+from combo_gym import ComboGym
 from model import QuantizedRNN
 
 
@@ -15,6 +18,13 @@ device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
 
 
 import numpy as np
+def make_env(problem, options=None):
+    def thunk():
+        env = ComboGym(problem=problem, options=options, random_initial=True)
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        return env
+
+    return thunk
 
 class LevinLossAutomaton:
     def is_automaton_applicable(self, trajectory, actions, finished, j):
@@ -87,13 +97,14 @@ class LevinLossAutomaton:
         """
         chained_trajectory = None
         joint_problem_name_list = []
-        for problem, trajectory in trajectories.items():
-            if chained_trajectory is None:
-                chained_trajectory = copy.deepcopy(trajectory)
-            else:
-                chained_trajectory._sequence = chained_trajectory._sequence + copy.deepcopy(trajectory._sequence)
-            name_list = [problem for _ in range(len(trajectory._sequence))]
-            joint_problem_name_list = joint_problem_name_list + name_list
+        for problem, prob_trajectories in trajectories.items():
+            for trajectory in prob_trajectories:
+                if chained_trajectory is None:
+                    chained_trajectory = copy.deepcopy(trajectory)
+                else:
+                    chained_trajectory._sequence = chained_trajectory._sequence + copy.deepcopy(trajectory._sequence)
+                name_list = [problem for _ in range(len(trajectory._sequence))]
+                joint_problem_name_list = joint_problem_name_list + name_list
         return self.loss(automata, chained_trajectory, number_actions, joint_problem_name_list, problem_automaton)
 
 
@@ -135,54 +146,60 @@ def extract_options():
 
     This code assumes that the models were already trained for each one of the problems specified in the list problems below.
     """
-    problems = ["BL-TR", "TR-BL", "BR-TL", "TL-BR"]
+    problems = ["BL-TR", "TR-BL","TL-BR","BR-TL"]
     # problems = ["BR-TL"]
-    width_automaton = 3
+    width_automaton = 1
     sub_automata = {}
     complete_automata = []
+    base_automata = {}
     for i in range(len(problems)):
         sub_automata[problems[i]] = []
+        base_automata[problems[i]] = []
         print('Extracting from model ', problems[i])
 
         env = Game(3, 3, problems[i])
-        rnn = QuantizedRNN(21, 4, 3)
-        hidden_states = []
-        rnn.load_state_dict(torch.load(f'binary/quantized-game-width' + str(3) + '-' + problems[i] + '-rnn-noreg-' + str(4) + '-model.pth', weights_only=True))
+    #     env_sync = gym.vector.SyncVectorEnv(
+    #     [make_env(problems[i])],
+    # )
+        rnn = QuantizedRNN(21, 32, 3)
+        rnn.load_state_dict(torch.load(f'binary/game-width' + str(3) + '-' + problems[i] + '-noreg-' + str(32) + '-mult-traj-model.pth', weights_only=True))
 
-        env.reset()
-        full_automaton = Automaton(rnn, problems[i]) 
-        full_automaton.generate_modes()
+        with open('trajectories/game-width' + str(3) + '-' + problems[i] + '-quantized-mult-traj-model-' + str(32) + '.pkl', 'rb') as f:
+            trajectory = pickle.load(f)
+        for traj in trajectory: 
+            full_automaton = Automaton(rnn, problems[i])
+            full_automaton.generate_modes(traj.get_trajectory()[0][0])
+            base_automata[problems[i]] = base_automata[problems[i]] + [copy.deepcopy(full_automaton)]
 
-        extractor = SubAutomataExtractor(full_automaton, width_automaton)
-        complete_automata = complete_automata + [full_automaton]
+        # extractor = SubAutomataExtractor(full_automaton, width_automaton)
+        complete_automata = complete_automata + base_automata[problems[i]]
         counter = 1
-        for automaton in [full_automaton]:
+        for automaton in base_automata[problems[i]]:
             # this will generate an image with the complete automaton extracted from each neural model
             # the images can be quite helpful for debugging purposes.
-            # automaton.print_image('images/full-' + problems[i] + '-' + str(counter))
+            # automaton.print_image('images/base-' + problems[i] + '-' + str(counter))
             counter += 1
 
             sub_extractor = SubAutomataExtractor(automaton, width_automaton)
             automata = sub_extractor.extract_sub_automata()
             sub_automata_rewired = sub_extractor.rewire_sub_automata(automata)
-            sub_automata[problems[i]] = sub_automata[problems[i]] + sub_automata_rewired
+            sub_automata[problems[i]] = sub_automata[problems[i]] + copy.deepcopy(sub_automata_rewired)
     
         print('Extracted: ', len(sub_automata[problems[i]]), ' automata')
+
 
     # loading the trajectories from the trained policies
     trajectories = {}
     for problem in problems:
-        env = Game(3, 3, problem)
-        rnn = QuantizedRNN(21, 4, 3)
-        hidden_states = []
-        rnn.load_state_dict(torch.load(f'binary/quantized-game-width' + str(3) + '-' + problem + '-rnn-noreg-' + str(4) + '-model.pth', weights_only=True))
-
-        env.reset()
         number_actions = 3
         
+        #Generating trajectories
+        # trajectory = _rollout(rnn, env)
 
-        trajectory = _rollout(rnn, env)
-        # print(trajectory._sequence)
+        #Load trajectories
+        with open('trajectories/game-width' + str(3) + '-' + problem + '-quantized-mult-traj-model-' + str(32) + '.pkl', 'rb') as f:
+            trajectory = pickle.load(f)
+
         trajectories[problem] = trajectory
 
     loss = LevinLossAutomaton()
@@ -215,8 +232,7 @@ def extract_options():
                 # The following statement ensures that we prefer smaller automaton in case
                 # of ties in the Levin loss. The minus 0.01 is to avoid precision issues 
                 # while detecting ties. 
-                # elif levin_loss == best_loss:
-                #     print("TIES!")
+
                 elif levin_loss - 0.01 < best_loss and automaton.get_size() < best_size:
                     best_loss = levin_loss
                     best_automaton = automaton
@@ -228,8 +244,7 @@ def extract_options():
         best_loss = loss.compute_loss(selected_automata, "", trajectories, number_actions)
 
         print("Levin loss of the current set: ", best_loss)
-        # for a in selected_automata:
-            # print(a._modes_dict)
+
     # remove the last automaton added
     selected_automata = selected_automata[0:len(selected_automata) - 1]
 
@@ -241,8 +256,9 @@ def extract_options():
 
 
 automata = extract_options()
-for i, a in enumerate(automata):
-    a.print_image('images/automata/sub-' + a._problem + '-quantized-'+str(i))
-with open("selected_options.pkl", "wb") as file:
+# for i, a in enumerate(automata):
+#     a.print_image('images/automata/sub-' + a._problem + '-quantized-naive'+str(i))
+
+with open("selected_options_naive_2.pkl", "wb") as file:
     pickle.dump(automata, file)
 

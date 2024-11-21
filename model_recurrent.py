@@ -99,6 +99,7 @@ class GruAgent(nn.Module):
     def __init__(self, envs, h_size=64, feature_extractor=False, greedy=False):
         super().__init__()
         self.input_to_actor = False
+        self.hidden_size = h_size
         self.greedy = greedy
         if feature_extractor:
             self.network = nn.Sequential(
@@ -155,7 +156,6 @@ class GruAgent(nn.Module):
 
     def get_states(self, x, gru_state, done):
         hidden = self.network(x)
-
         # LSTM logic
         batch_size = gru_state.shape[1]
         hidden = hidden.reshape((-1, batch_size, self.gru.input_size))
@@ -164,10 +164,10 @@ class GruAgent(nn.Module):
         for h, d in zip(hidden, done):
             # print('d: ', d)
             h, gru_state = self.gru(h.unsqueeze(0), (1.0 - d).view(1, -1, 1) * gru_state)
-            quantized_hidden = STEQuantize.apply(h)
-            new_hidden += [quantized_hidden]
+            gru_state = STEQuantize.apply(gru_state)
+            new_hidden += [h]
         new_hidden = torch.flatten(torch.cat(new_hidden), 0, 1)
-        return new_hidden, STEQuantize.apply(gru_state)
+        return new_hidden, gru_state
 
     def get_value(self, x, gru_state, done):
         if self.input_to_actor:
@@ -194,3 +194,6 @@ class GruAgent(nn.Module):
                 action = probs.sample()
         return action, probs.log_prob(action), probs.entropy(), self.critic(concatenated), gru_state
 
+    #TODO: Used in other codes, will edit it to work for synced envs too
+    def init_hidden(self):
+        return torch.zeros(1, 1, self.hidden_size).to(device)

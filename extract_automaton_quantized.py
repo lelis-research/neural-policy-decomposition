@@ -8,6 +8,8 @@ import heapq
 import copy
 from graphviz import Digraph
 
+device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
+done = torch.zeros(1).to(device)
 
 class Mode:
     def __init__(self, hidden, transitions, rewire=False):
@@ -48,7 +50,7 @@ class Automaton:
         h = self._model.init_hidden()
         hiddens = {tuple(h.clone().detach().numpy().flatten()):Mode(tuple(self._model.init_hidden().clone().detach().numpy().flatten()), set())}
         edges = {tuple(h.clone().detach().numpy().flatten()):set()}
-        for i in range(12):
+        while not env.is_over():
             h_old = h
             x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
             prob_actions, h = self._model(x_tensor, h_old)
@@ -62,6 +64,12 @@ class Automaton:
             mode._transitions.add(tuple(h.clone().detach().numpy().flatten()))
             a = torch.argmax(prob_actions).item()
             env.apply_action(a)
+        #last hidden state
+        h_val = tuple(h.clone().detach().numpy().flatten())
+        if h_val not in hiddens:
+            edges[h_val] = set()
+            mode = Mode(h_val, set())
+            hiddens[h_val] = mode
         self._adjacency_dict = edges
         self._modes = hiddens
         self._initial_mode = hiddens[tuple(self._model.init_hidden().clone().detach().numpy().flatten())]
@@ -88,7 +96,7 @@ class Automaton:
                     self._modes[con_h] = Mode(con_h, set())
                     self._adjacency_dict[con_h] = set()
     
-    def transition(self, env_init, hidden_state=None, apply_actions=True):
+    def transition(self, env_init, hidden_state=None, apply_actions=False):
         if hidden_state is None:
              mode = self._initial_mode
              h = torch.tensor(mode._h).view(1, -1)
@@ -100,7 +108,7 @@ class Automaton:
         terminate = False
         ep_len = 0
         env = copy.deepcopy(env_init)
-        while not terminate and ep_len < 12:
+        while not terminate and ep_len < 12 and not env.is_over():
             x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
             prob_actions, h = self._model(x_tensor, h)
             h_val = tuple(h.clone().detach().numpy().flatten())
@@ -115,10 +123,10 @@ class Automaton:
                     h = torch.tensor(mode._h).view(1, -1)
             else:
                 terminate = True
-            # if not terminate:
-            action = torch.argmax(prob_actions).item()
-            actions.append(action)
-            # env.apply_action(action)
+            if not terminate:
+                action = torch.argmax(prob_actions).item()
+                actions.append(action)
+                env.apply_action(action)
             ep_len += 1
         if ep_len >= 12:
             return False, actions
@@ -217,7 +225,6 @@ class SubAutomataExtractor:
         for o in node._open:
             current_mode_edges = []
             list_edges = list(self._automaton._adjacency_dict[o._h])
-
             for i in range(0, self._width + 1):
                 current_mode_edges = current_mode_edges + list(combinations(list_edges, i))
             edges_open_nodes.append(current_mode_edges)
