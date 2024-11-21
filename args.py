@@ -25,11 +25,11 @@ class Args:
     env_id: str = "ComboGrid-v0"
 
     """the id of the environment"""
-    total_timesteps: int = 5000000
+    total_timesteps: int = 20000000
     """total timesteps of the experiments"""
     learning_rate: float = 5e-4
     """the learning rate of the optimizer"""
-    value_learning_rate: float = 5e-4
+    value_learning_rate: float = 5e-3
     """the learning rate of the optimizer for value network"""
     num_envs: int = 8
     """the number of parallel game environments"""
@@ -51,7 +51,7 @@ class Args:
     """the surrogate clipping coefficient"""
     clip_vloss: bool = True
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
-    ent_coef: float = 0.02
+    ent_coef: float = 0.025
     """coefficient of the entropy"""
     vf_coef: float = 0.5
     """coefficient of the value function"""
