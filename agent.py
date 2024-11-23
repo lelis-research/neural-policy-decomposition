@@ -78,11 +78,13 @@ class PolicyGuidedAgent:
 
             current_length += 1
             if length_cap is not None and current_length > length_cap:
-                break        
+                self._h = None
+                if verbose: print("End Trajectory \n\n")
+                return trajectory, False
         
         self._h = None
         if verbose: print("End Trajectory \n\n")
-        return trajectory
+        return trajectory, True
 
     def run_with_relu_state(self, env, model):
         trajectory = Trajectory()
@@ -147,7 +149,7 @@ def main():
         for _ in range(150):
             for _ in range(500):
                 env = Game(game_width, game_width, problem)
-                trajectory = policy_agent.run(env, rnn, length_cap=shortest_trajectory_length, verbose=False)
+                trajectory, _ = policy_agent.run(env, rnn, length_cap=shortest_trajectory_length, verbose=False)
 
                 if len(trajectory.get_trajectory()) < shortest_trajectory_length:
                     shortest_trajectory_length = len(trajectory.get_trajectory())
@@ -165,7 +167,7 @@ def main():
 
         policy_agent._epsilon = 0.0
         env = Game(game_width, game_width, problem)
-        trajectory = policy_agent.run(env, best_model, greedy=True, length_cap=15, verbose=True)
+        trajectory, _ = policy_agent.run(env, best_model, greedy=True, length_cap=15, verbose=True)
 
         print('Trajectory length = ', len(trajectory.get_trajectory()))
         if len(trajectory.get_trajectory()) == 12:

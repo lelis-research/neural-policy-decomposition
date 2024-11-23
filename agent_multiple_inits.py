@@ -18,22 +18,22 @@ class Trajectory:
         return self._sequence
 
 def main():
-    hidden_size = 6
-    game_width = 3
+    hidden_size = 32
+    game_width = 5
 
-    # problem = "TL-BR"
+    problem = "TL-BR"
     # problem = "TR-BL"
     # problem = "BR-TL"
-    problem = "BL-TR"
+    # problem = "BL-TR"
 
     # rnn = CustomRNN(21, hidden_size, 3)
-    rnn = QuantizedRNN(21, hidden_size, 3)
+    rnn = QuantizedRNN(game_width**2 * 2 + 3, hidden_size, 3)
     # rnn = GumbelSoftmaxRNN(21, hidden_size, 3)
     # rnn = CustomRelu(game_width**2 * 2 + 9, hidden_size, 3)
 
     policy_agent = PolicyGuidedAgent()
 
-    shortest_trajectory_length = np.inf
+    shortest_trajectory_length = 30 #np.inf
     best_trajectory = None
     best_model = None
     best_loss = None
@@ -41,22 +41,23 @@ def main():
     initial_state_trajectory_map = {}
 
     for _ in range(200):
-        for _ in range(500):
+        for _ in range(4000):
             env = Game(game_width, game_width, problem, multiple_initial_states=True)
-            shortest_trajectory_length = np.inf
+            shortest_trajectory_length = 30 #np.inf
             if env in initial_state_trajectory_map:
-                shortest_trajectory_length = len(initial_state_trajectory_map[env].get_trajectory())
-            trajectory = policy_agent.run(copy.deepcopy(env), rnn, length_cap=shortest_trajectory_length, verbose=False)
+                if shortest_trajectory_length > len(initial_state_trajectory_map[env].get_trajectory()):
+                    shortest_trajectory_length = len(initial_state_trajectory_map[env].get_trajectory())
+            trajectory, finished = policy_agent.run(copy.deepcopy(env), rnn, length_cap=shortest_trajectory_length, verbose=False)
 
-            if env not in initial_state_trajectory_map:
+            if env not in initial_state_trajectory_map and finished:
                 initial_state_trajectory_map[env] = trajectory
-            elif len(trajectory.get_trajectory()) < len(initial_state_trajectory_map[env].get_trajectory()):
+            elif finished and len(trajectory.get_trajectory()) < len(initial_state_trajectory_map[env].get_trajectory()):
                 initial_state_trajectory_map[env] = trajectory
 
         loss = 0
         for state, trajectory in initial_state_trajectory_map.items():
             print('Trajectory length: ', len(trajectory.get_trajectory()), state._x, state._y)
-            loss += rnn.train(trajectory, l1_coef=0)
+            loss += rnn.train(trajectory, l1_coef=0.0)
         print(loss)
 
     policy_agent._epsilon = 0.0
@@ -65,14 +66,14 @@ def main():
     for i in range(env._rows):
         for j in range(env._columns):
             env.set_initial_state(i, j)
-            trajectory = policy_agent.run(copy.deepcopy(env), rnn, greedy=True, length_cap=15, verbose=True)
+            trajectory = policy_agent.run(copy.deepcopy(env), rnn, greedy=True, length_cap=30, verbose=True)
             print()
 
     # env = Game(game_width, game_width, problem)
     # policy_agent.run_with_relu_state(env, rnn)
 
-    torch.save(rnn.state_dict(), 'binary/multi-init-quantized-game-width' + str(game_width) + '-' + problem + '-rnn-noreg-' + str(hidden_size) + '-model.pth')
-    # torch.save(rnn.state_dict(), 'binary/delayed-quantized-game-width' + str(game_width) + '-' + problem + '-rnn-noreg-' + str(hidden_size) + '-model.pth')
+    # torch.save(rnn.state_dict(), 'binary/multi-init-quantized-game-width' + str(game_width) + '-' + problem + '-rnn-noreg-' + str(hidden_size) + '-model.pth')
+    torch.save(rnn.state_dict(), 'binary/quantized-game-width' + str(game_width) + '-' + problem + '-rnn-0001-' + str(hidden_size) + '-model.pth')
 
 if __name__ == "__main__":
     main()
