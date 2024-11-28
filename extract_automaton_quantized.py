@@ -44,35 +44,36 @@ class Automaton:
     def get_size(self):
         return len(self._modes)
 
-    def generate_modes(self, env=None):
-        if env is None:
+    def generate_modes(self, env_init=None):
+        if env_init is None:
             env = Game(3,3,self._problem)
+        else:
+            env = copy.deepcopy(env_init)
         h = self._model.init_hidden()
-        hiddens = {tuple(h.clone().detach().numpy().flatten()):Mode(tuple(self._model.init_hidden().clone().detach().numpy().flatten()), set())}
-        edges = {tuple(h.clone().detach().numpy().flatten()):set()}
+        self._modes.setdefault(tuple(h.clone().detach().numpy().flatten()), Mode(tuple(self._model.init_hidden().clone().detach().numpy().flatten()), set()))
+        self._adjacency_dict.setdefault(tuple(h.clone().detach().numpy().flatten()),set())
         while not env.is_over():
             h_old = h
             x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
             prob_actions, h = self._model(x_tensor, h_old)
             h_val = tuple(h_old.clone().detach().numpy().flatten())
-            if h_val not in hiddens:
-                edges[h_val] = set()
+            if h_val not in self._modes:
+                self._adjacency_dict[h_val] = set()
                 mode = Mode(h_val, set())
-                hiddens[h_val] = mode
-            mode = hiddens[h_val]
-            edges[h_val].add(tuple(h.clone().detach().numpy().flatten()))
+                self._modes[h_val] = mode
+            mode = self._modes[h_val]
+            self._adjacency_dict[h_val].add(tuple(h.clone().detach().numpy().flatten()))
             mode._transitions.add(tuple(h.clone().detach().numpy().flatten()))
             a = torch.argmax(prob_actions).item()
             env.apply_action(a)
         #last hidden state
         h_val = tuple(h.clone().detach().numpy().flatten())
-        if h_val not in hiddens:
-            edges[h_val] = set()
+        if h_val not in self._modes:
+            self._adjacency_dict[h_val] = set()
             mode = Mode(h_val, set())
-            hiddens[h_val] = mode
-        self._adjacency_dict = edges
-        self._modes = hiddens
-        self._initial_mode = hiddens[tuple(self._model.init_hidden().clone().detach().numpy().flatten())]
+            self._modes[h_val] = mode
+
+        self._initial_mode = self._modes[tuple(self._model.init_hidden().clone().detach().numpy().flatten())]
     
     def add_adj_dict(self, adj_dict):
         for mode, connection in adj_dict.items():
@@ -132,6 +133,7 @@ class Automaton:
             return False, actions
         if apply_actions:
             for a in actions:
+                # print(a)
                 env_init.apply_action(a)
         return True, actions
     

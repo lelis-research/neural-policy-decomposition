@@ -96,7 +96,7 @@ class LstmAgent(nn.Module):
         return action, probs.log_prob(action), probs.entropy(), self.critic(concatenated), lstm_state
 
 class GruAgent(nn.Module):
-    def __init__(self, envs, h_size=64, feature_extractor=False, greedy=False):
+    def __init__(self, envs, h_size=64, feature_extractor=False, greedy=False, option_len=0):
         super().__init__()
         self.input_to_actor = False
         self.hidden_size = h_size
@@ -127,7 +127,7 @@ class GruAgent(nn.Module):
                 nn.Tanh(),
                 layer_init(nn.Linear(64, 64)),
                 nn.Tanh(),
-                layer_init(nn.Linear(64, envs.single_action_space.n)),
+                layer_init(nn.Linear(64, envs.single_action_space.n + option_len)),
             )
 
             self.critic = nn.Sequential(
@@ -143,7 +143,7 @@ class GruAgent(nn.Module):
                 nn.Tanh(),
                 layer_init(nn.Linear(64, 64)),
                 nn.Tanh(),
-                layer_init(nn.Linear(64, envs.single_action_space.n)),
+                layer_init(nn.Linear(64, envs.single_action_space.n + option_len)),
             )
 
             self.critic = nn.Sequential(
@@ -156,13 +156,12 @@ class GruAgent(nn.Module):
 
     def get_states(self, x, gru_state, done):
         hidden = self.network(x)
-        # LSTM logic
+        # GRU logic
         batch_size = gru_state.shape[1]
         hidden = hidden.reshape((-1, batch_size, self.gru.input_size))
         done = done.reshape((-1, batch_size))
         new_hidden = []
         for h, d in zip(hidden, done):
-            # print('d: ', d)
             h, gru_state = self.gru(h.unsqueeze(0), (1.0 - d).view(1, -1, 1) * gru_state)
             gru_state = STEQuantize.apply(gru_state)
             new_hidden += [h]

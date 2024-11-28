@@ -1,5 +1,6 @@
 import random
 import time
+import pickle
 
 import gymnasium as gym
 import numpy as np
@@ -10,37 +11,28 @@ import tyro
 from torch.utils.tensorboard import SummaryWriter
 
 
-# from stable_baselines3.common.atari_wrappers import (  # isort:skip
-#     ClipRewardEnv,
-#     EpisodicLifeEnv,
-#     FireResetEnv,
-#     MaxAndSkipEnv,
-#     NoopResetEnv,
-# )
 from combo import Game
 from combo_gym import ComboGym
 from args import Args
 from model_recurrent import LstmAgent, GruAgent
+
+
+use_options = False
+options = []
+if use_options:
+    with open("options/run2/selected_options_2.pkl", "rb") as file:
+        options = pickle.load(file)
     
-def make_env(env_id, idx, capture_video, run_name, problem, episode_length=None):
+def make_env(problem, episode_length=None, width=5):
     def thunk():
-        env = ComboGym(problem=problem, random_initial=True, episode_length=episode_length)
+        if use_options:
+            env = ComboGym(rows=width, columns=width, problem=problem, random_initial=False, episode_length=episode_length, options=options)
+        else:
+            env = ComboGym(rows=width, columns=width, problem=problem, random_initial=True, episode_length=episode_length)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
     return thunk
-
-# def _l1_norm(model , lambda_l1):
-#     if lambda_l1 == 0:
-#         return 0
-#     l1_norm = sum(p.abs().sum() for p in model.parameters())
-#     return lambda_l1 * l1_norm
-
-# def _l1_norm(model, lambda_l1):
-#     if lambda_l1 == 0:
-#         return 0
-#     l1_norm = sum(p.abs().sum() for name, p in model.named_parameters() if "bias" not in name)
-#     return lambda_l1 * l1_norm  
 
 def _l1_norm(model, lambda_l1):
     l1_loss = 0
@@ -55,7 +47,7 @@ if __name__ == "__main__":
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
-    run_name = f"{args.rnn_type}-{args.hidden_size}-{args.episode_length}-{args.num_steps}-{args.problem}-{args.seed}"
+    run_name = f"{args.rnn_type}-{args.hidden_size}-{args.episode_length}-{args.num_steps}-{args.problem}-{args.seed}-{use_options}"
     print(run_name)
     if args.track:
         import wandb
@@ -85,14 +77,14 @@ if __name__ == "__main__":
 
     # env setup
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, i, args.capture_video, run_name, args.problem, args.episode_length) for i in range(args.num_envs)],
+        [make_env(args.problem, args.episode_length) for i in range(args.num_envs)],
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     if args.rnn_type == 'lstm':
         agent = LstmAgent(envs, args.hidden_size).to(device)
     elif args.rnn_type == 'gru':
-        agent = GruAgent(envs, args.hidden_size).to(device)
+        agent = GruAgent(envs, args.hidden_size, option_len=len(options)).to(device)
     else:
         print("Unknown type of model. Please choose between either LSTM or GRU.")
         exit()
@@ -208,6 +200,7 @@ if __name__ == "__main__":
         envinds = np.arange(args.num_envs)
         flatinds = np.arange(args.batch_size).reshape(args.num_steps, args.num_envs)
         clipfracs = []
+        gradients = []
         for epoch in range(args.update_epochs):
             np.random.shuffle(envinds)
             for start in range(0, args.num_envs, envsperbatch):
@@ -273,6 +266,8 @@ if __name__ == "__main__":
                 loss.backward()
                 nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
                 optimizer.step()
+                for p in agent.parameters():
+                    gradients += [p.grad.norm()]
 
             if args.target_kl is not None and approx_kl > args.target_kl:
                 break
@@ -294,7 +289,7 @@ if __name__ == "__main__":
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
         if args.track:
-            wandb.log({"value_loss": v_loss.item(), "policy_loss":pg_loss.item(),"entropy":entropy_loss.item(), "lr":lr_other, "valuelr":lr_value})
+            wandb.log({"value_loss": v_loss.item(), "policy_loss":pg_loss.item(),"entropy":entropy_loss.item(), "lr":lr_other, "valuelr":lr_value, "clipfac":np.mean(clipfracs), "gradient":np.mean(gradients)})
     envs.close()
     writer.close()
 

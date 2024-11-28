@@ -11,7 +11,7 @@ class Args:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
-    track: bool = False
+    track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
     wandb_project_name: str = "PPOwithRandomInitial"
     """the wandb's project name"""
@@ -25,15 +25,15 @@ class Args:
     env_id: str = "ComboGrid-v0"
 
     """the id of the environment"""
-    total_timesteps: int = 20000000
+    total_timesteps: int = 3000000
     """total timesteps of the experiments"""
-    learning_rate: float = 5e-4
+    learning_rate: float = 2.5e-4
     """the learning rate of the optimizer"""
-    value_learning_rate: float = 5e-3
+    value_learning_rate: float = 1e-4
     """the learning rate of the optimizer for value network"""
     num_envs: int = 8
     """the number of parallel game environments"""
-    num_steps: int = 30
+    num_steps: int = 100
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: bool = True
     """Toggle learning rate annealing for policy and value networks"""
@@ -43,15 +43,15 @@ class Args:
     """the lambda for the general advantage estimation"""
     num_minibatches: int = 4
     """the number of mini-batches"""
-    update_epochs: int = 4
+    update_epochs: int = 5
     """the K epochs to update the policy"""
     norm_adv: bool = True
     """Toggles advantages normalization"""
-    clip_coef: float = 0.15
+    clip_coef: float = 0.25
     """the surrogate clipping coefficient"""
-    clip_vloss: bool = True
+    clip_vloss: bool = False
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
-    ent_coef: float = 0.025
+    ent_coef: float = 0.02
     """coefficient of the entropy"""
     vf_coef: float = 0.5
     """coefficient of the value function"""
@@ -65,12 +65,12 @@ class Args:
     "weight decay for l2 regularization"
     l1_lambda: float = 0
     "l1 lambda regularization"
-    hidden_size: int = 64
+    hidden_size: int = 128
     "size of RNN hidden states"
     problem: str = "TL-BR"
     "Problem"
     fine_tune: bool = False
-    episode_length: int = 500
+    episode_length: int = 30
 
     # to be filled in runtime
     batch_size: int = 0

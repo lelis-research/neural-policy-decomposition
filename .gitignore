@@ -18,3 +18,4 @@ test_mlp_l1.py
 test_gru_l1.py
 selected_options.pkl
 trajectories/*
+wandb/*

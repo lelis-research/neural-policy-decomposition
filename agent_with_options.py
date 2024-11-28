@@ -6,6 +6,7 @@ import pickle
 from bisect import insort
 import tyro
 from args import Args
+import wandb
 
 from combo import Game
 from model import CustomRNN, CustomRelu, QuantizedRNN
@@ -66,7 +67,7 @@ class RandomAgent:
 class PolicyGuidedAgent:
     def __init__(self, options=None):
         self._h = None
-        self._epsilon = 0.35
+        self._epsilon = 0.23
         self._is_recurrent = False
         self._options = options
 
@@ -90,8 +91,8 @@ class PolicyGuidedAgent:
                 if a < len(env.get_actions()):
                     return a, False
                 else:
-                    is_applicable, actions = self._options[a - len(env.get_actions())].transition(env, apply_actions=False)
-                    return actions, is_applicable
+                    is_applicable, actions = self._options[a - len(env.get_actions())].transition(env, apply_actions=True)
+                    return a, is_applicable
         return a, False
         
     def run(self, env, model, greedy=False, length_cap=None, verbose=False):
@@ -109,14 +110,11 @@ class PolicyGuidedAgent:
         while not env.is_over() and current_length < length_cap:
             a, option_applied = self.choose_action(env, model, greedy, verbose)
             if not option_applied and isinstance(a, int):
-                env.apply_action(a)
                 trajectory.add_pair(copy.deepcopy(env), a)
+                env.apply_action(a)
                 hidden_states.append(self._h)
             elif option_applied:
-                for action in a:
-                    env.apply_action(action)
-                    trajectory.add_pair(copy.deepcopy(env), action)
-                    hidden_states.append(self._h)
+                trajectory.add_pair(copy.deepcopy(env), a)
 
             if verbose:
                 print(env, a)
@@ -170,14 +168,14 @@ class PolicyGuidedAgent:
 
 def main():
     hidden_size = 32
-    game_width = 3
+    game_width = 5
     # args = tyro.cli(Args)
     # problem = args.problem
     # problem = "test"
-    # problem = "TL-BR"
+    problem = "TL-BR"
     # problem = "TR-BL"
     # problem = "BR-TL"
-    problem = "BL-TR"
+    # problem = "BL-TR"
     env = Game(game_width, game_width, problem, multiple_initial_states=False)
 
     use_option = False
@@ -185,18 +183,32 @@ def main():
         # print("Selecting options...")
         # options = extract_options()
         # print("Option selection complete!")
-        with open("selected_options_naive.pkl", "rb") as file:
+        with open("options/run2/selected_options_2.pkl", "rb") as file:
             options = pickle.load(file)
         policy_agent = PolicyGuidedAgent(options=options)
         rnn = CustomRNN(21, hidden_size, (len(options)+len(env.get_actions())))
     else:
-        rnn = QuantizedRNN(21, hidden_size, 3)
+        rnn = QuantizedRNN(2*(game_width**2) + 3, hidden_size, 3)
         policy_agent = PolicyGuidedAgent()
 
                 
+#     wandb.init(
+#     project=f"ComboGrid-Naive",
+#     entity=None,
+#     sync_tensorboard=True,
+#     config={
+#         "problem" : problem,
+#         "hidden_size": hidden_size,
+#         "use_option" : use_option,
+#         "game_width" : game_width
+#     },
+#     name=f"{problem}-{game_width}-{hidden_size}-{use_option}",
+#     monitor_gym=False,
+#     save_code=False,
+# )
 
-
-    shortest_trajectory_length = np.inf
+    # shortest_trajectory_length = np.inf
+    shortest_trajectory_length = 40
     best_trajectory = None
     best_model = None
     best_loss = None
@@ -206,7 +218,7 @@ def main():
         for _ in range(400):
             for _ in range(1500):
                 env = Game(game_width, game_width, problem, multiple_initial_states=True)
-                shortest_trajectory_length = np.inf
+                shortest_trajectory_length = 40
                 if env in initial_state_trajectory_map:
                     shortest_trajectory_length = len(initial_state_trajectory_map[env].get_trajectory())
                 trajectory, _ = policy_agent.run(copy.deepcopy(env), rnn, length_cap=shortest_trajectory_length, verbose=False)
@@ -216,15 +228,15 @@ def main():
                 elif len(trajectory.get_trajectory()) < len(initial_state_trajectory_map[env].get_trajectory()):
                     initial_state_trajectory_map[env] = trajectory
             loss = 0
-            for _ in range(10):
+            for _ in range(20):
                 for state, trajectory in initial_state_trajectory_map.items():
                     print('Trajectory length: ', len(trajectory.get_trajectory()), state._x, state._y)
                     loss += rnn.train(trajectory, l1_coef=0)
             print(loss)
     else:
 
-            for i in range(400):
-                for _ in range(1500):
+            for i in range(300):
+                for _ in range(1000):
                     env = Game(game_width, game_width, problem, multiple_initial_states=False)
                     trajectory, _ = policy_agent.run(copy.deepcopy(env), rnn, length_cap=shortest_trajectory_length, verbose=False)
 
@@ -233,22 +245,27 @@ def main():
                         best_trajectory = trajectory
 
                 print('i: Trajectory length: ', i, len(best_trajectory.get_trajectory()))
-                for _ in range(20):
+                for seq in best_trajectory.get_trajectory():
+                    print(seq[1], end=" ")
+                print()
+                for _ in range(30):
                     loss = rnn.train(best_trajectory)
                     print(loss)
+                    wandb.log({"loss": loss, "shortest_trajectory_length" : shortest_trajectory_length})
                 print()
-    
+
+    # wandb.finish()
     policy_agent._epsilon = 0.0
     env = Game(game_width, game_width, problem)
     trajectory = policy_agent.run(copy.deepcopy(env), rnn, greedy=True, length_cap=15, verbose=True)
 
-    for i in range(env._rows):
-        for j in range(env._columns):
-            env.set_initial_state(i, j)
-            trajectory = policy_agent.run(copy.deepcopy(env), rnn, greedy=True, length_cap=15, verbose=True)
-            print()
+    # for i in range(env._rows):
+    #     for j in range(env._columns):
+    #         env.set_initial_state(i, j)
+    #         trajectory = policy_agent.run(copy.deepcopy(env), rnn, greedy=True, length_cap=15, verbose=True)
+    #         print()
 
-    torch.save(rnn.state_dict(), 'binary/game-width' + str(game_width) + '-' + problem + '-noreg-' + str(hidden_size) + '.pth')
+    torch.save(rnn.state_dict(), 'binary/run2/game-width' + str(game_width) + '-' + problem + '-noreg-' + str(hidden_size) + '-' + str(use_option) + '-1.pth')
 
 
 if __name__ == "__main__":

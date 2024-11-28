@@ -4,11 +4,12 @@ from combo import Game
 
 class ComboGym(gym.Env):
     def __init__(self, rows=3, columns=3, problem="TL-BR", options=None, partial_observability=True, random_initial=False, episode_length=None):
-        self._game = Game(rows, columns, problem, options, partial_observability, random_initial)
+        self._game = Game(rows, columns, problem, partial_observability, random_initial)
         self._rows = rows
         self._columns = columns
         self._problem = problem
         self.render_mode = None
+        self._options = options
         self.observation_space = gym.spaces.Box(low=0, high=1, shape=(len(self._game.get_observation()), ), dtype=np.float64)
         self.action_space = gym.spaces.Discrete(len(self._game.get_actions()))
         self.n_steps = 0
@@ -26,7 +27,11 @@ class ComboGym(gym.Env):
     
     def step(self, action:int):
         trunctuated = False
-        self._game.apply_action(int(action))
+        action = int(action)
+        if action > 2:
+            is_applicable, actions = self._options[action - len(self._game.get_actions())].transition(self._game, apply_actions=True)
+        else:
+            self._game.apply_action(action)
         self.n_steps += 1
         terminated = self._game.is_over()
         #reward is 0 in goal state and -1 everywhere else
