@@ -16,7 +16,7 @@ from environemnts.environments_minigrid import make_env_four_rooms
 
 @dataclass
 class Args:
-    exp_id: str = ""
+    exp_id: str = "option_extraction_hc_all_segments_logits_levin_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_r400_sd0,1,2_olen2,3,4,5,6,7,8,9,10,11,12,13,14"
     """The ID of the finished experiment"""
     env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
     """the id of the environment corresponding to the trained agent
@@ -98,7 +98,6 @@ class Args:
     
     log_path: str = "outputs/logs/"
     """The name of the log file"""
-    
     log_level: str = "INFO"
     """The logging level"""
 
@@ -148,8 +147,12 @@ def main(args: Args):
 
     logger = utils.get_logger("testing_by_training_logger", args.log_level, args.log_path, suffix="test_by_training")
 
-    options, _ = load_options(args.exp_id, args)
+    options, _ = load_options(args.exp_id, args, logger)
 
+    for option in options:
+        print((option.mask.tolist(), option.option_size, option.problem_id))
+
+    # Custom parameters for each problem
     lrs = args.learning_rate
     clip_coef = args.clip_coef
     ent_coef = args.ent_coef
@@ -165,17 +168,20 @@ def main(args: Args):
 
 if __name__ == "__main__":
     args = tyro.cli(Args)
+    
+    # Setting the test experiment id
     if args.test_exp_id == "":
         args.test_exp_id = f'{args.test_exp_name}_{args.test_env_id}' + \
         f'_gw{args.game_width}_h{args.hidden_size}_l1{args.l1_lambda}'
     args.log_path = os.path.join(args.log_path, args.test_exp_id)
 
+    # Setting problem names
     if args.env_id == "ComboGrid":
         args.problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
-
     elif args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
         args.problems = [args.env_id + f"_{seed}" for seed in args.seeds]
     
+    # Setting test seeds and test problem names
     if isinstance(args.test_seeds, list) or isinstance(args.test_seeds, tuple):
         args.test_seeds = list(map(int, args.test_seeds))
     elif isinstance(args.test_seeds, str):

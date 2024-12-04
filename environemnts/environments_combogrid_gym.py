@@ -34,7 +34,7 @@ class ComboGym(gym.Env):
         self.action_space = gym.spaces.Discrete(len(self.program_stack))
         self.option_sizes = [3 for _ in range(len(options))]
     
-    def reset(self, init_loc=None, seed=0, options=None):
+    def reset(self, init_loc=None, init_dir=None, seed=0, options=None):
         self._game.reset(init_loc)
         self.n_steps = 0
         return self.get_observation(), {}

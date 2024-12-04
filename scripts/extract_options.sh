@@ -4,7 +4,7 @@
 #SBATCH --time=0-24:00      # time (DD-HH:MM)
 #SBATCH --output=%N-%j.out  # %N for node name, %j for jobID
 #SBATCH --account=def-lelis
-#SBATCH --array=0-0
+#SBATCH --array=0-9
 
 module load flexiblas
 export FLEXIBLAS=blis2
@@ -12,4 +12,4 @@ export FLEXIBLAS=blis2
 source envs/venv/bin/activate # Assuming we have all our environments in  `../envs/`
 
 python -m pipelines.extract_subpolicy_ppo \
---exp_name=option_extraction_hc_all_segments_logits_levin --cpus=$SLURM_CPUS_PER_TASK
+--exp_name=extract_hc_all_segments_logits_levin --cpus=$SLURM_CPUS_PER_TASK --seed=$SLURM_ARRAY_TASK_ID

@@ -10,6 +10,7 @@ from typing import Union, List
 from dataclasses import dataclass
 from torch.utils.tensorboard import SummaryWriter
 from environemnts.environments_combogrid_gym import make_env
+from environemnts.environments_combogrid import SEEDS as COMBOGRID_SEEDS
 from environemnts.environments_minigrid import make_env_simple_crossing, make_env_four_rooms
 from training.train_ppo_agent import train_ppo
 
@@ -24,7 +25,6 @@ class Args:
     """the id of the environment corresponding to the trained agent
     choices from [ComboGrid, MiniGrid-SimpleCrossingS9N1-v0]
     """
-    # seeds: Union[List[int], str] = (0,1,2)
     seeds: Union[List[int], str] = (0,1,2,3)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
     cuda: bool = True
@@ -45,19 +45,20 @@ class Args:
     # hyperparameter arguments
     game_width: int = 5
     """the length of the combo/mini-grid square"""
-    hidden_size: int = 6
+    hidden_size: int = 64
     """"""
     l1_lambda: float = 0
     """"""
     number_actions: int = 3
 
     # combogrid parameters
-    combogrid_problems: List[str] = ("TL-BR", "TR-BL", "BL-TR", "BR-TL")
+    combogrid_problems: List[str] = ("TL-BR", "TR-BL", "BR-TL", "BL-TR")
     
     # Specific arguments
     total_timesteps: int = 1_500_000
     """total timesteps for testinging"""
-    learning_rate: Union[List[float], float] = (0.0005, 0.0005, 5e-05) # Vanilla RL
+    learning_rate: Union[List[float], float] = (2.5e-4, 2.5e-4, 2.5e-4, 2.5e-4) # ComboGrid
+    # learning_rate: Union[List[float], float] = (0.0005, 0.0005, 5e-05) # Vanilla RL MiniGrid
     # learning_rate: Union[List[float], float] = (0.0005, 0.001, 0.001)
     """the learning rate of the optimize for testinging"""
     num_envs: int = 4
@@ -76,13 +77,15 @@ class Args:
     """the K epochs to update the policy for testinging"""
     norm_adv: bool = True
     """Toggles advantages normalization for testinging"""
+    clip_coef: Union[List[float], float] = (0.2, 0.2, 0.2, 0.2) # ComboGrid
     # clip_coef: Union[List[float], float] = (0.15, 0.1, 0.2) # Vanilla RL
-    clip_coef: Union[List[float], float] = (0.25, 0.2, 0.2)
+    # clip_coef: Union[List[float], float] = (0.25, 0.2, 0.2) # M
     """the surrogate clipping coefficient"""
     clip_vloss: bool = True
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
+    ent_coef: Union[List[float], float] = (0.01, 0.01, 0.01, .01) # ComboGrid
     # ent_coef: Union[List[float], float] = (0.05, 0.2, 0.0) # Vanilla RL
-    ent_coef: Union[List[float], float] = (0.1, 0.1, 0.1)
+    # ent_coef: Union[List[float], float] = (0.1, 0.1, 0.1)
     """coefficient of the entropy"""
     vf_coef: float = 0.5
     """coefficient of the value function"""
@@ -122,6 +125,8 @@ def main(args: Args):
 
     logger = utils.get_logger('ppo_trainer_logger_' + str(args.seed) + "_" + args.exp_name, args.log_level, log_path, suffix=suffix)
 
+    logger.info(f"\n\nExperiment: {args.exp_id}\n\n")
+
     if args.track:
         import wandb
 
@@ -134,6 +139,8 @@ def main(args: Args):
             monitor_gym=True,
             save_code=True,
         )
+    
+    # Setting up tensorboard summary writer
     writer = SummaryWriter(f"outputs/tensorboard/runs/{run_name}")
     writer.add_text(
         "hyperparameters",
@@ -156,6 +163,7 @@ def main(args: Args):
     problem = args.env_id
     l1_lambda = args.l1_lambda
     
+    # Parameter logging
     params = {
         'seed': seed,
         'hidden_size': hidden_size,
@@ -169,7 +177,7 @@ def main(args: Args):
         buffer += f"\n- {key}: {value}"
     logger.info(buffer)
 
-
+    # Environment creation
     if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
         envs = gym.vector.SyncVectorEnv( 
             [make_env_simple_crossing(view_size=game_width, seed=seed) for _ in range(args.num_envs)])
@@ -178,8 +186,6 @@ def main(args: Args):
         envs = gym.vector.SyncVectorEnv(
             [make_env(rows=game_width, columns=game_width, problem=problem) for _ in range(args.num_envs)],
         )    
-        assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
-        logger.info("envs.action_space.n", envs.action_space[0].n)
     elif args.env_id == "MiniGrid-FourRooms-v0":
         envs = gym.vector.SyncVectorEnv( 
             [make_env_four_rooms(view_size=game_width, seed=seed) for _ in range(args.num_envs)])
@@ -200,10 +206,12 @@ def main(args: Args):
 if __name__ == "__main__":
     args = tyro.cli(Args)
 
+    # Setting the experiment id
     if args.exp_id == "":
         args.exp_id = f'{args.exp_name}_{args.env_id}' + \
         f'_gw{args.game_width}_h{args.hidden_size}_l1{args.l1_lambda}'
     
+    # Processing seeds from arguments
     if isinstance(args.seeds, list) or isinstance(args.seeds, tuple):
         args.seeds = list(map(int, args.seeds))
     elif isinstance(args.seeds, str):
@@ -212,6 +220,10 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError
     
+    if args.env_id == "ComboGrid":
+        args.seeds = [COMBOGRID_SEEDS[problem] for problem in args.combogrid_problems]
+
+    # Parameter specification for each problem
     lrs = args.learning_rate
     clip_coef = args.clip_coef
     ent_coef = args.ent_coef

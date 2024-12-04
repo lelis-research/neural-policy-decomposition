@@ -6,23 +6,14 @@ import matplotlib.pyplot as plt
 from minigrid.wrappers import RGBImgObsWrapper
 from utils.utils import get_logger
 from agents.trajectory import Trajectory
-from environemnts.environments_minigrid import MiniGridWrap, get_training_tasks_simplecross, get_test_tasks_fourrooms
+from environemnts.environments_combogrid_gym import ComboGym
 from agents.policy_guided_agent import PPOAgent
 from pipelines.extract_subpolicy_ppo import Args, process_args, regenerate_trajectories
 
-def visualize(env: MiniGridWrap, verbose=True):
-    env_img = RGBImgObsWrapper(env.env)
-    obs = env_img.unwrapped.gen_obs()
-    if verbose:
-        print("raw obs:\n", np.fliplr(env.env.observation(obs)['image'][:,:, 0]))
-        print("dir:", obs['direction'])
-        print("pos:", env.env.agent_pos, "goal:", env.goal_position, "over?", env.is_over())
-        print("Warning: The agent view in the image is incorrect.")
-    plt.imshow(env_img.observation(obs)['image'])
-    plt.show()
+def visualize(env: ComboGym, verbose=True):
+    print(env._game)
 
-
-def run(agent, env: MiniGridWrap, length_cap=None, verbose=False):
+def run(agent, env: ComboGym, length_cap=None, verbose=False):
 
         trajectory = Trajectory()
         current_length = 0
@@ -45,7 +36,7 @@ def run(agent, env: MiniGridWrap, length_cap=None, verbose=False):
                 print("logits:", logits)
                 print(env, a)
                 print()
-            visualize(env, verbose)
+                visualize(env, verbose)
 
             next_o, _, terminal, truncated, _ = env.step(a.item())
             
@@ -60,6 +51,7 @@ def run(agent, env: MiniGridWrap, length_cap=None, verbose=False):
         if verbose: print("End Trajectory \n\n")
         print("trajectory length:", trajectory.get_length())
         return trajectory
+
 
 def visualize_on_four_rooms(args):
     trajectories = {}
@@ -82,17 +74,15 @@ def visualize_on_four_rooms(args):
             trajectory = run(agent, env, verbose=verbose)
             trajectories[problem] = trajectory
 
+
 def visualize_trained_agents(args):
     trajectories = {}
-    verbose = True
+    verbose = False
     for seed, problem, model_directory in zip(args.seeds, args.problems, args.model_paths):
-
+        print(problem, model_directory)
         model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
-        if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-            env = get_training_tasks_simplecross(view_size=args.game_width, seed=seed)
-        elif args.env_id == "MiniGrid-FourRooms-v0":
-            env = get_test_tasks_fourrooms(view_size=args.game_width, seed=seed)
-        import minigrid.core.constants
+        
+        env = ComboGym(rows=args.game_width, columns=args.game_width, problem=problem)
 
         agent = PPOAgent(env, hidden_size=args.hidden_size)
         
@@ -129,6 +119,7 @@ def try_on_other_environments(args):
 
             trajectory = run(agent, env, verbose=verbose)
 
+
 def visualize_envs(args):
     for seed in args.seeds:
         print(f"seed = {seed}")
@@ -141,12 +132,27 @@ def visualize_envs(args):
 
 def main(args):
     # visualize_trained_agents(args)
-    # args.seeds = (0, 1, 2)
-    args.seeds = (41, 51, 8)
-    args.env_id = "MiniGrid-FourRooms-v0"
+    args.seeds = (0, 1, 2, 3)
+    # args.seeds = (41, 51, 8)
+    # args.env_id = "MiniGrid-FourRooms-v0"
+    args.env_id = "ComboGrid"
+    args.problems = (
+        "TL-BR", 
+                     "TR-BL", 
+                     "BR-TL", 
+                     "BL-TR"
+                     )
+    args.model_paths = [
+        'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd0_TL-BR',
+        'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd1_TR-BL',
+        'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd2_BR-TL',
+        'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd3_BL-TR'
+    ]
+    args.hidden_size = 64
+    visualize_trained_agents(args)
     # try_on_other_environments(args)
     # visualize_envs(args)
-    visualize_on_four_rooms(args)
+    # visualize_on_four_rooms(args)
 
 
 if __name__ == '__main__':

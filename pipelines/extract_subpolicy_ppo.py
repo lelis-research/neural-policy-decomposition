@@ -7,6 +7,7 @@ import pickle
 import glob
 import torch.nn.functional as F
 from tqdm import tqdm
+import numpy as np
 from typing import List
 from utils import utils
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ import concurrent.futures
 from pipelines.losses import LevinLossActorCritic, LogitsLossActorCritic
 from agents.policy_guided_agent import PPOAgent
 from environemnts.environments_combogrid_gym import ComboGym
+from environemnts.environments_combogrid import SEEDS
 from environemnts.environments_minigrid import get_training_tasks_simplecross
 from utils.utils import timing_decorator
 from utils.utils import timing_decorator
@@ -22,24 +24,31 @@ from utils.utils import timing_decorator
 
 @dataclass
 class Args:
-    exp_id: str = "exp_01"
+    exp_id: str = ""
     """the id to be set for the experiment"""
     exp_name: str = "Option Extraction"
     """the name of this experiment"""
-    problems: List[str] = tuple()
+    problems: List[str] = ("TL-BR", "TR-BL", "BR-TL", "BL-TR")
     """"""
-    seeds: Union[List[int], str] = (0,1,2)
+    seeds: Union[List[int], str] = (0,1,2,3)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
+    # model_paths: List[str] = (
+    #     'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_sd0',
+    #     'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd1',
+    #     'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd2'
+    # )
     model_paths: List[str] = (
-        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_sd0',
-        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd1',
-        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd2'
+        'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd0_TL-BR',
+        'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd1_TR-BL',
+        'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd2_BR-TL',
+        'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd3_BL-TR',
     )
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
 
     # Algorithm specific arguments
-    env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
+    env_id: str = "ComboGrid"
+    # env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
     """the id of the environment corresponding to the trained agent
     choices from [ComboGrid, MiniGrid-SimpleCrossingS9N1-v0]
     """
@@ -65,6 +74,9 @@ class Args:
     """"""
     max_grad_norm: float = 1.0
 
+    # Script arguments
+    seed: int = 0
+    """The seed used for reproducibilty of the script"""
     log_path: str = "outputs/logs/"
     """The name of the log file"""
     log_level: str = "INFO"
@@ -73,11 +85,23 @@ class Args:
 
 def process_args() -> Args:
     args = tyro.cli(Args)
+
+    # TRY NOT TO MODIFY: seeding
+    seed = args.seed
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.backends.cudnn.deterministic = args.torch_deterministic
+
+    # setting the experiment id
     args.exp_id = f'{args.exp_name}_{args.env_id}' + \
     f'_gw{args.game_width}_h{args.hidden_size}_l1{args.l1_lambda}' + \
     f'_r{args.number_restarts}_sd{",".join(map(str, args.seeds))}'
+
+    # updating log path
     args.log_path = os.path.join(args.log_path, args.exp_id)
     
+    # Processing seeds from commands
     if isinstance(args.seeds, list) or isinstance(args.seeds, tuple):
         args.seeds = list(map(int, args.seeds))
     elif isinstance(args.seeds, str):
@@ -87,11 +111,7 @@ def process_args() -> Args:
         raise NotImplementedError
     
     if args.env_id == "ComboGrid":
-        args.problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
-        args.seeds = args.seeds * (len(args.problems)//len(args.seeds) + 1)
-        args.seeds = args.seeds[:len(args.problems)]
-        raise NotImplementedError # TODO add problems
-
+        args.seeds = [SEEDS[problem] for problem in args.problems]
     elif args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
         args.problems = [args.env_id + f"_{seed}" for seed in args.seeds]
         
@@ -163,19 +183,19 @@ def save_options(options: List[PPOAgent], trajectories: dict, exp_id: str, logge
     for i, model in enumerate(options):
         
         model_path = os.path.join(save_dir, f'ppo_model_option_{i}.pth')
-        print(model.state_dict().keys())
         torch.save({
             'id': i,
             'model_state_dict': model.state_dict(),
             'mask': model.mask,
             'n_iterations': model.option_size,
-            'problem': model.problem_id
+            'problem': model.problem_id,
+            'environment_args': model.environment_args
         }, model_path)
     
     logger.info(f"Options saved to {save_dir}")
 
 
-def load_options(exp_id, args):
+def load_options(exp_id, args, logger):
     """
     Load the saved options (masks, models, and number of iterations) from the specified directory.
 
@@ -190,25 +210,41 @@ def load_options(exp_id, args):
     # Load the models and iterations
     save_dir = f"binary/options/options_{exp_id}"
 
+    logger.info(f"Option directory: {save_dir}")
+
     model_files = sorted([f for f in os.listdir(save_dir) if f.startswith('ppo_model_option_') and f.endswith('.pth')])
     
+    logger.info(f"Found options: {model_files}")
+
     n = len(model_files)
     options = [None] * n
 
-    for seed, model_file in zip(args.seeds, model_files):
+    for model_file in model_files:
         model_path = os.path.join(save_dir, model_file)
         checkpoint = torch.load(model_path)
         
         if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-            envs = get_training_tasks_simplecross(view_size=args.game_width, seed=seed)
+            if 'environment_args' in checkpoint:
+                seed = int(checkpoint['environment_args']['seed'])
+                game_width = int(checkpoint['environment_args']['game_width'])
+            else:
+                seed = int(checkpoint['problem'][-1])
+                game_width = args.game_width
+            envs = get_training_tasks_simplecross(view_size=game_width, seed=seed)
         elif args.env_id == "MiniGrid-FourRooms-v0":
             raise NotImplementedError("Environment creation not implemented!")
+        elif args.env_id == "ComboGrid":
+            game_width = int(checkpoint['environment_args']['game_width'])
+            problem = checkpoint['problem']
+            envs = ComboGym(rows=game_width, columns=game_width, problem=problem)
         else:
-            envs = ComboGym(rows=args.game_width, columns=args.game_width, problem=args.problem)
+            raise NotImplementedError
 
         model = PPOAgent(envs=envs, hidden_size=args.hidden_size)  # Create a new PPOAgent instance with default parameters
         model.load_state_dict(checkpoint['model_state_dict'])
         model.to_option(checkpoint['mask'], checkpoint['n_iterations'], checkpoint['problem'])
+        if 'environment_args' in checkpoint:
+            model.environment_args = checkpoint['environment_args']
         i = checkpoint['id']
         options[i] = model
         
@@ -499,8 +535,10 @@ def hill_climbing_mask_space_training_data():
             logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
             if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
                 env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
-            else:
+            elif args.env_id == "ComboGrid":
                 env = ComboGym(rows=game_width, columns=game_width, problem=problem)
+            else:
+                raise NotImplementedError
 
             agent = PPOAgent(env, hidden_size=args.hidden_size)
             agent.load_state_dict(torch.load(model_path))
@@ -522,6 +560,15 @@ def hill_climbing_mask_space_training_data():
                 best_loss = levin_loss
                 best_mask_model = agent
                 agent.to_option(mask, option_size, problem)
+                if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
+                    agent.environment_args = {
+                        "seed": seed,
+                        "game_width": game_width
+                    }
+                else:
+                    agent.environment_args = {
+                        "game_width": game_width
+                    }
             utils.logger_flush(logger)
         logger.debug("\n")
 
@@ -603,7 +650,7 @@ def hill_climbing_all_segments():
         logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
         if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
             env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
-        else:
+        elif args.env_id == "ComboGrid":
             env = ComboGym(rows=game_width, columns=game_width, problem=problem)
         
         agent = PPOAgent(env, hidden_size=args.hidden_size)
@@ -652,8 +699,10 @@ def hill_climbing_all_segments():
             logger.info(f'Extracting from the agent trained on problem={problem}, seed={seed}, segment=({segment},{segment+option_size})')
             if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
                 env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
-            else:
+            elif args.env_id == "ComboGrid":
                 env = ComboGym(rows=game_width, columns=game_width, problem=problem)
+            else:
+                raise NotImplementedError
             
             agent = PPOAgent(env, hidden_size=args.hidden_size)
             agent.load_state_dict(torch.load(model_path))
@@ -669,7 +718,16 @@ def hill_climbing_all_segments():
             if best_loss is None or loss_value < best_loss:
                 best_loss = loss_value
                 best_mask_model = agent
-                agent.to_option(mask, option_size, problem)    
+                agent.to_option(mask, option_size, problem)
+                if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
+                    agent.environment_args = {
+                        "seed": seed,
+                        "game_width": game_width
+                    }
+                else:
+                    agent.environment_args = {
+                        "game_width": game_width
+                    }
 
         # we recompute the Levin loss after the automaton is selected so that we can use 
         # the loss on all trajectories as the stopping condition for selecting masks
@@ -762,8 +820,10 @@ def whole_dec_options_training_data_levin_loss():
             logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
             if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
                 env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
-            else:
+            elif args.env_id == "ComboGrid":
                 env = ComboGym(rows=game_width, columns=game_width, problem=problem)
+            else:
+                raise NotImplementedError
 
             agent = PPOAgent(env, hidden_size=args.hidden_size)
             agent.load_state_dict(torch.load(model_path))
@@ -776,6 +836,15 @@ def whole_dec_options_training_data_levin_loss():
                     best_loss = levin_loss
                     best_mask_model = agent
                     agent.to_option(mask, i, problem)
+                    if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
+                        agent.environment_args = {
+                            "seed": seed,
+                            "game_width": game_width
+                        }
+                    else:
+                        agent.environment_args = {
+                            "game_width": game_width
+                        }
 
         logger.info(f'Summary of option #{len(selected_mask_models)}: \nBest Mask:{best_mask_model.mask}, best_loss={best_loss}, option_size={best_mask_model.option_size}, option problem={best_mask_model.problem_id}\nPrevious selected loss:{previous_loss}')
         utils.logger_flush(logger)
@@ -821,7 +890,7 @@ def whole_dec_options_training_data_levin_loss():
     # utils.logger_flush(logger)
 
 
-def learn_mask(agent: PPOAgent, trajectories: dict, loss: LogitsLossActorCritic, args: Args):
+def learn_mask(agent: PPOAgent, trajectories: dict, args: Args):
     # Initialize the masks as trainable parameters with random values
     mask = torch.nn.Parameter(torch.randn(args.hidden_size), requires_grad=True)
     optimizer = torch.optim.Adam([mask], lr=args.mask_learning_rate)
@@ -843,7 +912,7 @@ def learn_mask(agent: PPOAgent, trajectories: dict, loss: LogitsLossActorCritic,
             agent.eval()
 
             # Apply transformations with requires_grad
-            
+
             mask_transformed = 1.5 * torch.tanh(mask) + 0.5 * torch.tanh(-3 * mask)
 
             mask_transformed = mask_transformed.clamp(-0.5, 0.5) * 2
@@ -870,6 +939,7 @@ def learn_mask(agent: PPOAgent, trajectories: dict, loss: LogitsLossActorCritic,
     mask_transformed = mask_transformed.clamp(-0.5, 0.5) * 2
     return mask_transformed.detach().data
 
+
 @timing_decorator
 def learn_options():
     """
@@ -889,6 +959,7 @@ def learn_options():
     option_length = list(range(2, max_length + 1))
     args.exp_id += f'_olen{",".join(map(str, option_length))}'
 
+    # logging the experiment parameters
     params = {
         'hidden_size': args.hidden_size,
         'option_length': option_length,
@@ -903,21 +974,24 @@ def learn_options():
     for key, value in params.items():
         buffer += (f"{key}: {value}\n")
     logger.info(buffer)
-
     utils.logger_flush(logger)
+
 
     logits_loss = LogitsLossActorCritic(logger)
     levin_loss = LevinLossActorCritic(logger)
 
     all_masks_info = []
 
+
     for seed, problem, model_directory in zip(args.seeds, args.problems, args.model_paths):
         model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
         logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
         if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
             env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
-        else:
+        elif args.env_id == "ComboGrid":
             env = ComboGym(rows=game_width, columns=game_width, problem=problem)
+        else:
+            raise NotImplementedError
         
         agent = PPOAgent(env, hidden_size=args.hidden_size)
         agent.load_state_dict(torch.load(model_path))
@@ -954,11 +1028,14 @@ def learn_options():
         for mask, problem, option_size, model_path, segment in all_masks_info:
             model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
             logger.info(f'Extracting from the agent trained on problem={problem}, seed={seed}, segment=({segment},{segment+option_size})')
+            
             if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
                 env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
-            else:
+            elif args.env_id == "ComboGrid":
                 env = ComboGym(rows=game_width, columns=game_width, problem=problem)
-            
+            else:
+                raise NotImplementedError
+
             agent = PPOAgent(env, hidden_size=args.hidden_size)
             agent.load_state_dict(torch.load(model_path))
 
@@ -969,11 +1046,19 @@ def learn_options():
                                            number_actions=number_actions, 
                                            number_steps=selected_option_sizes + [option_size])
 
-
             if best_loss is None or loss_value < best_loss:
                 best_loss = loss_value
                 best_mask_model = agent
-                agent.to_option(mask, option_size, problem)    
+                agent.to_option(mask, option_size, problem)   
+                if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
+                    agent.environment_args = {
+                        "seed": seed,
+                        "game_width": game_width
+                    }
+                else:
+                    agent.environment_args = {
+                        "game_width": game_width
+                    } 
 
         # we recompute the Levin loss after the automaton is selected so that we can use 
         # the loss on all trajectories as the stopping condition for selecting masks
@@ -1014,6 +1099,7 @@ def main():
     # whole_dec_options_training_data_levin_loss()
     # hill_climbing_all_segments()
     learn_options()
+
 
 if __name__ == "__main__":
     main()

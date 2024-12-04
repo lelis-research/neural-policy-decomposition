@@ -139,9 +139,12 @@ class PPOAgent(nn.Module):
             nn.Tanh(),
             layer_init(nn.Linear(hidden_size, action_space_size), std=0.01),
         )
+
+        # Option attributes
         self.mask = None
         self.option_size = None
         self.problem_id = None
+        self.environment_args = None
         
     def get_value(self, x):
         return self.critic(x)
@@ -216,7 +219,6 @@ class PPOAgent(nn.Module):
 
             if verbose:
                 print(env, a)
-                print(env.env.agent_pos, env.goal_position, env.is_over())
                 print()
 
             next_o, _, terminal, truncated, _ = env.step(a.item())

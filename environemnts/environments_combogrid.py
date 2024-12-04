@@ -3,6 +3,23 @@ import numpy as np
 import math
 import gc
 
+
+SEEDS = {
+    "TL-BR": 0,
+    "TR-BL": 1, 
+    "BR-TL": 2, 
+    "BL-TR": 3,
+
+    "ML-BR": 4,
+    "ML-TR": 5,
+    "MR-TL": 6,
+    "MR-BL": 7,
+    "TL-MR": 8,
+    "BL-MR": 9,
+    "TR-ML": 10,
+    "BR-ML": 11
+}
+
 class Problem:
     def __init__(self, rows, columns, problem_str):
         self.rows = rows
@@ -121,7 +138,7 @@ class Game:
         for i, v in enumerate(self._state):
             one_hot_matrix_state[v][i] = 1
         return np.concatenate((self._matrix_unit.ravel(), one_hot_matrix_state.ravel(), self._matrix_goal.ravel()))
-       
+    
     def is_over(self):
         return self._matrix_goal[self._x][self._y] == 1
     
