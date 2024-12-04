@@ -153,7 +153,7 @@ def regenerate_trajectories(args: Args, verbose=False, logger=None):
     return trajectories
 
 
-def save_options(options: List[PPOAgent], trajectories: dict, exp_id: str, logger):
+def save_options(options: List[PPOAgent], trajectories: dict, args: Args, logger):
     """
     Save the options (masks, models, and number of iterations) to the specified directory.
 
@@ -162,7 +162,7 @@ def save_options(options: List[PPOAgent], trajectories: dict, exp_id: str, logge
         trajectories (Dict[str, Trajectory]): The trajectories corresponding to the these options
         save_dir (str): The directory where the options will be saved.
     """
-    save_dir = f"binary/options/options_{exp_id}"
+    save_dir = f"binary/options/{args.exp_id}/seed={args.seed}"
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     else:
@@ -195,7 +195,7 @@ def save_options(options: List[PPOAgent], trajectories: dict, exp_id: str, logge
     logger.info(f"Options saved to {save_dir}")
 
 
-def load_options(exp_id, args, logger):
+def load_options(args, logger):
     """
     Load the saved options (masks, models, and number of iterations) from the specified directory.
 
@@ -208,7 +208,7 @@ def load_options(exp_id, args, logger):
     """
 
     # Load the models and iterations
-    save_dir = f"binary/options/options_{exp_id}"
+    save_dir = f"binary/options/{args.exp_id}/seed={args.seed}"
 
     logger.info(f"Option directory: {save_dir}")
 
@@ -596,7 +596,7 @@ def hill_climbing_mask_space_training_data():
 
     save_options(options=selected_mask_models, 
                  trajectories=trajectories,
-                 exp_id=args.exp_id, 
+                 args=args, 
                  logger=logger)
     
     utils.logger_flush(logger)
@@ -754,7 +754,7 @@ def hill_climbing_all_segments():
 
     save_options(options=selected_mask_models, 
                  trajectories=trajectories,
-                 exp_id=args.exp_id, 
+                 args=args,  
                  logger=logger)
     
     utils.logger_flush(logger)
@@ -874,7 +874,7 @@ def whole_dec_options_training_data_levin_loss():
 
     save_options(options=selected_mask_models, 
                  trajectories=trajectories,
-                 exp_id=args.exp_id, 
+                 args=args, 
                  logger=logger)
     
     utils.logger_flush(logger)
@@ -1085,7 +1085,7 @@ def learn_options():
 
     save_options(options=selected_mask_models, 
                  trajectories=trajectories,
-                 exp_id=args.exp_id, 
+                 args=args, 
                  logger=logger)
     
     utils.logger_flush(logger)

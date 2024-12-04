@@ -8,12 +8,12 @@ from dataclasses import dataclass
 
 @dataclass
 class Args:
-    exp_id: str = "exp_01"
+    exp_id: str = ""
     """The ID of the finished experiment"""
-
+    seed: int = 0
+    """run seed"""
     log_path: str = "outputs/logs/"
     """The name of the log file"""
-    
     log_level: str = "INFO"
     """The logging level"""
 
@@ -24,7 +24,7 @@ def main(args):
     logger = utils.get_logger("print_option_occurances_logger", args.log_level, log_path)
     loss = LogitsLossActorCritic(logger)
 
-    options, trajectories = load_options(args.exp_id, args, logger)
+    options, trajectories = load_options(args, logger)
 
     loss.print_output_subpolicy_trajectory(options=options, 
                                             trajectories=trajectories, 

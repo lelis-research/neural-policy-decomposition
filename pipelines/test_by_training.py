@@ -96,6 +96,9 @@ class Args:
     num_iterations: int = 0
     """the number of iterations (computed in runtime)"""
     
+    # script arguments
+    seed: int = 0
+    """run seed"""
     log_path: str = "outputs/logs/"
     """The name of the log file"""
     log_level: str = "INFO"
@@ -147,7 +150,7 @@ def main(args: Args):
 
     logger = utils.get_logger("testing_by_training_logger", args.log_level, args.log_path, suffix="test_by_training")
 
-    options, _ = load_options(args.exp_id, args, logger)
+    options, _ = load_options(args, logger)
 
     for option in options:
         print((option.mask.tolist(), option.option_size, option.problem_id))

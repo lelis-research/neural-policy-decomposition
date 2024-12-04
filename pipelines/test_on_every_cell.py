@@ -25,6 +25,9 @@ class Args:
     seeds: Union[List[int], str] = (0,1,2,3)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
     
+    # script arguments
+    seed: int = 0
+    """run seed"""
     log_path: str = "outputs/logs/"
     """The name of the log file"""
     log_level: str = "INFO"
@@ -37,7 +40,7 @@ def main(args):
     
     loss = LogitsLossActorCritic(logger)
 
-    options, _ = load_options(args.exp_id, args, logger)
+    options, _ = load_options(args, logger)
 
     logger.info("Testing on each grid cell")
     for seed, problem in zip(args.seeds, args.problems):
