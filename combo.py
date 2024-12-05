@@ -2,10 +2,10 @@ import random
 import numpy as np
 import math
 import gc
-
+import copy
 
 class Game:
-    def __init__(self, rows, columns, problem, partial_observability=True, multiple_initial_states=False):
+    def __init__(self, rows, columns, problem, partial_observability=True, multiple_initial_states=False, visitation_bonus=False):
         self._rows = rows
         self._columns = columns
         self._matrix_unit = np.zeros((rows, columns))
@@ -17,6 +17,9 @@ class Game:
         self._goal = None
         self._goals_reached = set()
         self._problem = problem
+        self._visitation_bonus = visitation_bonus
+        if self._visitation_bonus:
+            self._state_visitation_count = {}
 
         self._problem_1 = "TL-BR" # initial location at top-left and goal at bottom-right
         self._problem_2 = "TR-BL" # initial location at top-right and goal at bottom-left
@@ -182,6 +185,15 @@ class Game:
 
         self._state = []
 
+        if self._visitation_bonus:
+            for r in range(self._rows):
+                for c in range(self._columns):
+                    one_hot_matrix_state = np.zeros((self._rows, self._columns), dtype=int)
+                    one_hot_matrix_state[r][c] = 1
+                    self._state_visitation_count[tuple(one_hot_matrix_state.ravel())] = 0
+            
+            self._state_visitation_count[copy.deepcopy(tuple(self._matrix_unit.ravel()))] += 1
+
     def get_observation(self):
         if self._partial_observability:
             one_hot_matrix_state = np.zeros((3), dtype=int)
@@ -250,3 +262,8 @@ class Game:
                 if isinstance(self._goal, set) and (self._x, self._y) in self._goal and (self._x, self._y) not in self._goals_reached:
                     self._goals_reached.add((self._x, self._y))
             self._state = []
+        if self._visitation_bonus:
+            self._state_visitation_count[copy.deepcopy(tuple(self._matrix_unit.ravel()))] += 1
+
+    def get_exploration_bonus(self):
+        return 0.5 / (self._state_visitation_count[copy.deepcopy(tuple(self._matrix_unit.ravel()))] ** 0.5)

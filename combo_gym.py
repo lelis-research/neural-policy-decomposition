@@ -3,13 +3,14 @@ import numpy as np
 from combo import Game
 
 class ComboGym(gym.Env):
-    def __init__(self, rows=3, columns=3, problem="TL-BR", options=None, partial_observability=True, random_initial=False, episode_length=None):
-        self._game = Game(rows, columns, problem, partial_observability, random_initial)
+    def __init__(self, rows=3, columns=3, problem="TL-BR", options=None, partial_observability=True, random_initial=False, episode_length=None, visitation_bonus=False):
+        self._game = Game(rows, columns, problem, partial_observability, random_initial, visitation_bonus)
         self._rows = rows
         self._columns = columns
         self._problem = problem
         self.render_mode = None
         self._options = options
+        self._visitation_bonus = visitation_bonus
         self.observation_space = gym.spaces.Box(low=0, high=1, shape=(len(self._game.get_observation()), ), dtype=np.float64)
         self.action_space = gym.spaces.Discrete(len(self._game.get_actions()))
         self.n_steps = 0
@@ -35,7 +36,10 @@ class ComboGym(gym.Env):
         self.n_steps += 1
         terminated = self._game.is_over()
         #reward is 0 in goal state and -1 everywhere else
-        reward = -1 
+        reward = -1
+        #add exploration bonus to reward to encourage agent to visit less visited states
+        if self._visitation_bonus:
+            reward += self._game.get_exploration_bonus()
         if terminated:
             reward = 0
         #info about each step, Not being used 

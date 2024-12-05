@@ -17,18 +17,18 @@ from args import Args
 from model_recurrent import LstmAgent, GruAgent
 
 
-use_options = False
+use_options = True
 options = []
 if use_options:
     with open("options/run2/selected_options_2.pkl", "rb") as file:
         options = pickle.load(file)
     
-def make_env(problem, episode_length=None, width=5):
+def make_env(problem, episode_length=None, width=3, visitation_bonus=False, options=[]):
     def thunk():
         if use_options:
-            env = ComboGym(rows=width, columns=width, problem=problem, random_initial=False, episode_length=episode_length, options=options)
+            env = ComboGym(rows=width, columns=width, problem=problem, random_initial=False, episode_length=episode_length, options=options, visitation_bonus=visitation_bonus)
         else:
-            env = ComboGym(rows=width, columns=width, problem=problem, random_initial=True, episode_length=episode_length)
+            env = ComboGym(rows=width, columns=width, problem=problem, random_initial=True, episode_length=episode_length, visitation_bonus=False)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
@@ -47,7 +47,8 @@ if __name__ == "__main__":
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
-    run_name = f"{args.rnn_type}-{args.hidden_size}-{args.episode_length}-{args.num_steps}-{args.problem}-{args.seed}-{use_options}"
+    use_options = args.use_options
+    run_name = f"{args.rnn_type}-{args.hidden_size}-{args.episode_length}-{args.num_steps}-{args.problem}-{args.seed}-{use_options}-quantized"
     print(run_name)
     if args.track:
         import wandb
@@ -66,6 +67,10 @@ if __name__ == "__main__":
         "hyperparameters",
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
     )
+    options = []
+    if use_options == 1:
+        with open("options/run2/selected_options_2.pkl", "rb") as file:
+            options = pickle.load(file)
 
     # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
@@ -77,7 +82,7 @@ if __name__ == "__main__":
 
     # env setup
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args.problem, args.episode_length) for i in range(args.num_envs)],
+        [make_env(args.problem, args.episode_length, args.game_width, args.visitation_bonus, options) for i in range(args.num_envs)],
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 

@@ -161,15 +161,15 @@ def extract_options():
     #     env_sync = gym.vector.SyncVectorEnv(
     #     [make_env(problems[i])],
     # )
-        rnn = QuantizedRNN(21, 32, 3)
-        rnn.load_state_dict(torch.load(f'binary/game-width' + str(3) + '-' + problems[i] + '-noreg-' + str(32) + '-mult-traj-model.pth', weights_only=True))
+        rnn = QuantizedRNN(21, 32, 10)
+        rnn.load_state_dict(torch.load(f'binary/run2/game-width' + str(3) + '-' + problems[i] + '-noreg-' + str(32) + '.pth', weights_only=True))
 
-        with open('trajectories/game-width' + str(3) + '-' + problems[i] + '-quantized-mult-traj-model-' + str(32) + '.pkl', 'rb') as f:
+        with open('trajectories/run2/game-width' + str(3) + '-' + problems[i] + '-quantized-mult-traj-model-' + str(32) + '.pkl', 'rb') as f:
             trajectory = pickle.load(f)
+        full_automaton = Automaton(rnn, problems[i])
         for traj in trajectory: 
-            full_automaton = Automaton(rnn, problems[i])
             full_automaton.generate_modes(traj.get_trajectory()[0][0])
-            base_automata[problems[i]] = base_automata[problems[i]] + [copy.deepcopy(full_automaton)]
+        base_automata[problems[i]] = base_automata[problems[i]] + [copy.deepcopy(full_automaton)]
 
         # extractor = SubAutomataExtractor(full_automaton, width_automaton)
         complete_automata = complete_automata + base_automata[problems[i]]
@@ -177,7 +177,7 @@ def extract_options():
         for automaton in base_automata[problems[i]]:
             # this will generate an image with the complete automaton extracted from each neural model
             # the images can be quite helpful for debugging purposes.
-            # automaton.print_image('images/base-' + problems[i] + '-' + str(counter))
+            automaton.print_image('images/base-' + problems[i] + '-' + str(counter))
             counter += 1
 
             sub_extractor = SubAutomataExtractor(automaton, width_automaton)
@@ -197,7 +197,7 @@ def extract_options():
         # trajectory = _rollout(rnn, env)
 
         #Load trajectories
-        with open('trajectories/game-width' + str(3) + '-' + problem + '-quantized-mult-traj-model-' + str(32) + '.pkl', 'rb') as f:
+        with open('trajectories/run2/game-width' + str(3) + '-' + problem + '-quantized-mult-traj-model-' + str(32) + '.pkl', 'rb') as f:
             trajectory = pickle.load(f)
 
         trajectories[problem] = trajectory
@@ -259,6 +259,6 @@ automata = extract_options()
 # for i, a in enumerate(automata):
 #     a.print_image('images/automata/sub-' + a._problem + '-quantized-naive'+str(i))
 
-with open("selected_options_naive_2.pkl", "wb") as file:
+with open("options/run2/selected_options_2.pkl", "wb") as file:
     pickle.dump(automata, file)
 
