@@ -76,7 +76,7 @@ class Args:
     "the width of the grid"
     visitation_bonus: bool = True
     "toggles using visitation bonus in calculating reward"
-    use_option: int = 0
+    use_options: int = 0
     "set to 0 for not using options, and 1 for using options when training"
 
     # to be filled in runtime
