@@ -11,5 +11,5 @@ export FLEXIBLAS=blis2
 
 source envs/venv/bin/activate # Assuming we have all our environments in  `../envs/`
 
-python -m pipelines.extract_subpolicy_ppo \
+OMP_NUM_THREADS=1 python -m pipelines.extract_subpolicy_ppo \
 --exp_name=extract_hc_all_segments_logits_levin --cpus=$SLURM_CPUS_PER_TASK --seed=$SLURM_ARRAY_TASK_ID

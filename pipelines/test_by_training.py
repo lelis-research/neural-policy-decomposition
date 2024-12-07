@@ -22,7 +22,7 @@ class Args:
     """the id of the environment corresponding to the trained agent
     choices from [ComboGrid, MiniGrid-SimpleCrossingS9N1-v0]
     """
-    seeds: Union[List[int], str] = (0,1,2)
+    env_seeds: Union[List[int], str] = (0,1,2)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
     problems: List[str] = tuple()
     """To be filled"""
@@ -182,7 +182,7 @@ if __name__ == "__main__":
     if args.env_id == "ComboGrid":
         args.problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
     elif args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-        args.problems = [args.env_id + f"_{seed}" for seed in args.seeds]
+        args.problems = [args.env_id + f"_{seed}" for seed in args.env_seeds]
     
     # Setting test seeds and test problem names
     if isinstance(args.test_seeds, list) or isinstance(args.test_seeds, tuple):
