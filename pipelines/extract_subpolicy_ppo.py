@@ -30,24 +30,24 @@ class Args:
     """the name of this experiment"""
     problems: List[str] = ("TL-BR", "TR-BL", "BR-TL", "BL-TR")
     """"""
-    seeds: Union[List[int], str] = (0,1,2,3)
+    seeds: Union[List[int], str] = (0,1,2)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
-    # model_paths: List[str] = (
-    #     'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_sd0',
-    #     'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd1',
-    #     'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd2'
-    # )
     model_paths: List[str] = (
-        'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd0_TL-BR',
-        'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd1_TR-BL',
-        'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd2_BR-TL',
-        'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd3_BL-TR',
+        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_sd0',
+        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd1',
+        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd2'
     )
+    # model_paths: List[str] = (
+    #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd0_TL-BR',
+    #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd1_TR-BL',
+    #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd2_BR-TL',
+    #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd3_BL-TR',
+    # )
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
 
     # Algorithm specific arguments
-    env_id: str = "ComboGrid"
+    env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
     # env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
     """the id of the environment corresponding to the trained agent
     choices from [ComboGrid, MiniGrid-SimpleCrossingS9N1-v0]
@@ -77,6 +77,8 @@ class Args:
     # Script arguments
     seed: int = 0
     """The seed used for reproducibilty of the script"""
+    torch_deterministic: bool = True
+    """if toggled, `torch.backends.cudnn.deterministic=False`"""
     log_path: str = "outputs/logs/"
     """The name of the log file"""
     log_level: str = "INFO"
@@ -99,7 +101,7 @@ def process_args() -> Args:
     f'_r{args.number_restarts}_sd{",".join(map(str, args.seeds))}'
 
     # updating log path
-    args.log_path = os.path.join(args.log_path, args.exp_id)
+    args.log_path = os.path.join(args.log_path, args.exp_id, f"seed={str(args.seed)}")
     
     # Processing seeds from commands
     if isinstance(args.seeds, list) or isinstance(args.seeds, tuple):
@@ -940,6 +942,12 @@ def learn_mask(agent: PPOAgent, trajectories: dict, args: Args):
     return mask_transformed.detach().data
 
 
+def learn_mask_iter(trajectories, problem, s, length, agent, args, model_path):
+    sub_trajectory = {problem: trajectories[problem].slice(s, n=length)}
+    # learn option with this length using gumbel softmax
+    mask = learn_mask(agent, sub_trajectory, args)
+    return (mask, problem, length, model_path, s)
+
 @timing_decorator
 def learn_options():
     """
@@ -982,7 +990,6 @@ def learn_options():
 
     all_masks_info = []
 
-
     for seed, problem, model_directory in zip(args.seeds, args.problems, args.model_paths):
         model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
         logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
@@ -998,16 +1005,28 @@ def learn_options():
 
         t_length = trajectories[problem].get_length()
 
-        for length in range(2, t_length + 1):
-            for s in range(t_length - length):
-                logger.info(f"Processing option length={length}, segment={s}..")
-                sub_trajectory = {problem: trajectories[problem].slice(s, n=length)}
-                # learn option with this length using gumbel softmax
-                mask = learn_mask(agent, sub_trajectory, logits_loss, args)
-                print(mask)
-                all_masks_info.append((mask, problem, length, model_path, s))
-            utils.logger_flush(logger)
-        
+        with concurrent.futures.ProcessPoolExecutor(max_workers=args.cpus) as executor:
+            # Submit tasks to the executor with all required arguments
+            futures = []
+            for length in range(2, t_length + 1):
+                for s in range(t_length - length):
+                    future = executor.submit(
+                        learn_mask_iter, trajectories, problem, s, length, agent, 
+                        args, model_path 
+                    )
+                    future.s = s,
+                    future.length = length
+                    futures.append(future)
+
+            # Process the results as they complete
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    mask, problem, length, model_path, s = future.result()
+                    all_masks_info.append((mask, problem, length, model_path, s))
+                    logger.info(f'Progress: segment:{s} of length{length} done.')
+                except Exception as exc:
+                    logger.error(f'Segment:{future.s} of length{future.length}generated an exception: {exc}')
+        utils.logger_flush(logger)
     logger.debug("\n")
 
     selected_masks = []
