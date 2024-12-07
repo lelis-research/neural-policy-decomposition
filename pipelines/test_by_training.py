@@ -176,7 +176,7 @@ if __name__ == "__main__":
     if args.test_exp_id == "":
         args.test_exp_id = f'{args.test_exp_name}_{args.test_env_id}' + \
         f'_gw{args.game_width}_h{args.hidden_size}_l1{args.l1_lambda}'
-    args.log_path = os.path.join(args.log_path, args.test_exp_id)
+    args.log_path = os.path.join(args.log_path, args.exp_id, args.test_exp_id)
 
     # Setting problem names
     if args.env_id == "ComboGrid":
