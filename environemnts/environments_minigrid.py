@@ -80,7 +80,7 @@ class MiniGridWrap(gym.Env):
 
     def step(self, action: int): 
         reward_sum = 0
-        if self.options and action >= len(self.options):
+        if self.options and action >= self.n_discrete_actions:
             option = self.options[action - self.n_discrete_actions]
             for _ in range(option.option_size):
                 option_action, _ = option.get_action_with_mask(torch.tensor(self.get_observation(), dtype=torch.float32).view(1, -1))
@@ -128,7 +128,7 @@ class MiniGridWrap(gym.Env):
     
     def get_action_space(self):
         return self.action_space.n
-    
+
     def represent_options(self, options):
         str_map = ""
         for i in range(self.env.agent_view_size):

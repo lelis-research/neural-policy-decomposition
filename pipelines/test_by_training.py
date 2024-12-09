@@ -2,6 +2,8 @@ import os
 import torch
 import time
 import tyro
+import random
+import numpy as np
 import gymnasium as gym
 from utils import utils
 from logging import Logger
@@ -16,7 +18,7 @@ from environemnts.environments_minigrid import make_env_four_rooms
 
 @dataclass
 class Args:
-    exp_id: str = "option_extraction_hc_all_segments_logits_levin_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_r400_sd0,1,2_olen2,3,4,5,6,7,8,9,10,11,12,13,14"
+    exp_id: str = "learn_options_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_r400_sd0,1,2_olen2,3,4,5,6,7,8,9,10,11,12,13,14"
     """The ID of the finished experiment"""
     env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
     """the id of the environment corresponding to the trained agent
@@ -99,6 +101,8 @@ class Args:
     # script arguments
     seed: int = 0
     """run seed"""
+    torch_deterministic: bool = True
+    """if toggled, `torch.backends.cudnn.deterministic=False`"""
     log_path: str = "outputs/logs/"
     """The name of the log file"""
     log_level: str = "INFO"
@@ -107,6 +111,13 @@ class Args:
 
 def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, seed: int, args: Args, logger: Logger):
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
+
+    # TRY NOT TO MODIFY: seeding
+    seed = args.seed
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.backends.cudnn.deterministic = args.torch_deterministic
     
     if args.test_env_id == "MiniGrid-FourRooms-v0":
         envs = gym.vector.SyncVectorEnv(
@@ -117,13 +128,13 @@ def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, seed: int,
         raise NotImplementedError
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
     
-    model_path = f'binary/models/{test_exp_id}/extended_MODEL.pt'
+    model_path = f'binary/models/{test_exp_id}/seed={args.seed}/extended_MODEL.pt'
     
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
     
-    run_name = f"{test_exp_id}_trained_with_options_t{int(time.time())}"
+    run_name = f"{test_exp_id}_trained_with_options/seed={args.seed}/_t{int(time.time())}"
     writer = SummaryWriter(f"outputs/tensorboard/runs/{run_name}")
     hyperparameters = dict(vars(args))
     hyperparameters.update({"test_exp_id": test_exp_id})
@@ -176,7 +187,7 @@ if __name__ == "__main__":
     if args.test_exp_id == "":
         args.test_exp_id = f'{args.test_exp_name}_{args.test_env_id}' + \
         f'_gw{args.game_width}_h{args.hidden_size}_l1{args.l1_lambda}'
-    args.log_path = os.path.join(args.log_path, args.exp_id, args.test_exp_id)
+    args.log_path = os.path.join(args.log_path, args.exp_id, f"seed={args.seed}", args.test_exp_id)
 
     # Setting problem names
     if args.env_id == "ComboGrid":
