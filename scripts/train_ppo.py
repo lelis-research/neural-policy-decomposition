@@ -18,14 +18,14 @@ from training.train_ppo_agent import train_ppo
 @dataclass
 class Args:
     exp_id: str = ""
-    """The ID of the finished experiment"""
+    """The ID of the finished experiment; to be filled in run time"""
     exp_name: str = "train_ppo_agent"
     """the name of this experiment"""
-    env_id: str = "ComboGrid"
+    env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
     """the id of the environment corresponding to the trained agent
     choices from [ComboGrid, MiniGrid-SimpleCrossingS9N1-v0]
     """
-    seeds: Union[List[int], str] = (0,1,2,3)
+    env_seeds: Union[List[int], str] = (0,1,2,3)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
@@ -57,9 +57,9 @@ class Args:
     # Specific arguments
     total_timesteps: int = 1_500_000
     """total timesteps for testinging"""
-    learning_rate: Union[List[float], float] = (2.5e-4, 2.5e-4, 2.5e-4, 2.5e-4) # ComboGrid
+    # learning_rate: Union[List[float], float] = (2.5e-4, 2.5e-4, 2.5e-4, 2.5e-4) # ComboGrid
     # learning_rate: Union[List[float], float] = (0.0005, 0.0005, 5e-05) # Vanilla RL MiniGrid
-    # learning_rate: Union[List[float], float] = (0.0005, 0.001, 0.001)
+    learning_rate: Union[List[float], float] = (0.0005, 0.001, 0.001)
     """the learning rate of the optimize for testinging"""
     num_envs: int = 4
     """the number of parallel game environments for testinging"""
@@ -77,15 +77,15 @@ class Args:
     """the K epochs to update the policy for testinging"""
     norm_adv: bool = True
     """Toggles advantages normalization for testinging"""
-    clip_coef: Union[List[float], float] = (0.2, 0.2, 0.2, 0.2) # ComboGrid
+    # clip_coef: Union[List[float], float] = (0.2, 0.2, 0.2, 0.2) # ComboGrid
     # clip_coef: Union[List[float], float] = (0.15, 0.1, 0.2) # Vanilla RL
-    # clip_coef: Union[List[float], float] = (0.25, 0.2, 0.2) # M
+    clip_coef: Union[List[float], float] = (0.25, 0.2, 0.2) 
     """the surrogate clipping coefficient"""
     clip_vloss: bool = True
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
-    ent_coef: Union[List[float], float] = (0.01, 0.01, 0.01, .01) # ComboGrid
+    # ent_coef: Union[List[float], float] = (0.01, 0.01, 0.01, .01) # ComboGrid
     # ent_coef: Union[List[float], float] = (0.05, 0.2, 0.0) # Vanilla RL
-    # ent_coef: Union[List[float], float] = (0.1, 0.1, 0.1)
+    ent_coef: Union[List[float], float] = (0.1, 0.1, 0.1)
     """coefficient of the entropy"""
     vf_coef: float = 0.5
     """coefficient of the value function"""
@@ -119,8 +119,9 @@ def main(args: Args):
     args.num_iterations = args.total_timesteps // args.batch_size
     
     run_name = f"{args.exp_id}_training_t{int(time.time())}" 
+    run_index = f"train_ppo_t{int(time.time())}" 
     
-    log_path = os.path.join(args.log_path, args.exp_id)
+    log_path = os.path.join(args.log_path, args.exp_id, "train_ppo")
     suffix = f"/training_ppo"
 
     logger = utils.get_logger('ppo_trainer_logger_' + str(args.seed) + "_" + args.exp_name, args.log_level, log_path, suffix=suffix)
@@ -141,7 +142,7 @@ def main(args: Args):
         )
     
     # Setting up tensorboard summary writer
-    writer = SummaryWriter(f"outputs/tensorboard/runs/{run_name}")
+    writer = SummaryWriter(f"outputs/tensorboard/runs/{args.exp_id}/{run_index}")
     writer.add_text(
         "hyperparameters",
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
@@ -212,24 +213,24 @@ if __name__ == "__main__":
         f'_gw{args.game_width}_h{args.hidden_size}_l1{args.l1_lambda}'
     
     # Processing seeds from arguments
-    if isinstance(args.seeds, list) or isinstance(args.seeds, tuple):
-        args.seeds = list(map(int, args.seeds))
-    elif isinstance(args.seeds, str):
-        start, end = map(int, args.seeds.split(","))
-        args.seeds = list(range(start, end + 1))
+    if isinstance(args.env_seeds, list) or isinstance(args.env_seeds, tuple):
+        args.env_seeds = list(map(int, args.env_seeds))
+    elif isinstance(args.env_seeds, str):
+        start, end = map(int, args.env_seeds.split(","))
+        args.env_seeds = list(range(start, end + 1))
     else:
         raise NotImplementedError
     
     if args.env_id == "ComboGrid":
-        args.seeds = [COMBOGRID_SEEDS[problem] for problem in args.combogrid_problems]
+        args.env_seeds = [COMBOGRID_SEEDS[problem] for problem in args.combogrid_problems]
 
     # Parameter specification for each problem
     lrs = args.learning_rate
     clip_coef = args.clip_coef
     ent_coef = args.ent_coef
     exp_id = args.exp_id
-    for i in range(len(args.seeds)):
-        args.seed = args.seeds[i]
+    for i in range(len(args.env_seeds)):
+        args.seed = args.env_seeds[i]
         args.ent_coef = ent_coef[i]
         args.clip_coef = clip_coef[i]
         args.learning_rate = lrs[i]
