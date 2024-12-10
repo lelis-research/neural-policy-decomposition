@@ -11,9 +11,9 @@ class Args:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
-    track: bool = False
+    track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "PPOwithRandomInitial"
+    wandb_project_name: str = "PPOwithRandomInitial5x5Test"
     """the wandb's project name"""
     wandb_entity: str = None
     """the entity (team) of wandb's project"""
@@ -24,7 +24,7 @@ class Args:
     # env_id: str = "BreakoutNoFrameskip-v4"
     env_id: str = "ComboGrid-v0"
     """the id of the environment"""
-    total_timesteps: int = 30000000
+    total_timesteps: int = 35000000
     """total timesteps of the experiments"""
     learning_rate: float = 2.5e-4
     """the learning rate of the optimizer"""
@@ -64,7 +64,7 @@ class Args:
     "weight decay for l2 regularization"
     l1_lambda: float = 0
     "l1 lambda regularization"
-    hidden_size: int = 64
+    hidden_size: int = 256
     "size of RNN hidden states"
     problem: str = "test"
     "Problem"
