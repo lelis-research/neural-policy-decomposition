@@ -67,7 +67,7 @@ class RandomAgent:
 class PolicyGuidedAgent:
     def __init__(self, options=None):
         self._h = None
-        self._epsilon = 0.23
+        self._epsilon = 0.3
         self._is_recurrent = False
         self._options = options
 
@@ -126,7 +126,7 @@ class PolicyGuidedAgent:
         
         self._h = None
         if verbose: print("End Trajectory \n\n")
-        return trajectory, hidden_states
+        return trajectory, env.is_over(), hidden_states
 
     def run_with_relu_state(self, env, model):
         trajectory = Trajectory()
@@ -208,7 +208,7 @@ def main():
 # )
 
     # shortest_trajectory_length = np.inf
-    shortest_trajectory_length = 40
+    shortest_trajectory_length = 30
     best_trajectory = None
     best_model = None
     best_loss = None
@@ -218,17 +218,18 @@ def main():
         for _ in range(400):
             for _ in range(1500):
                 env = Game(game_width, game_width, problem, multiple_initial_states=True)
-                shortest_trajectory_length = 40
+                shortest_trajectory_length = 30
                 if env in initial_state_trajectory_map:
                     shortest_trajectory_length = len(initial_state_trajectory_map[env].get_trajectory())
-                trajectory, _ = policy_agent.run(copy.deepcopy(env), rnn, length_cap=shortest_trajectory_length, verbose=False)
+                trajectory, positive, _ = policy_agent.run(copy.deepcopy(env), rnn, length_cap=shortest_trajectory_length, verbose=False)
 
                 if env not in initial_state_trajectory_map:
+                    # if positive:
                     initial_state_trajectory_map[env] = trajectory
                 elif len(trajectory.get_trajectory()) < len(initial_state_trajectory_map[env].get_trajectory()):
                     initial_state_trajectory_map[env] = trajectory
             loss = 0
-            for _ in range(20):
+            for _ in range(1):
                 for state, trajectory in initial_state_trajectory_map.items():
                     print('Trajectory length: ', len(trajectory.get_trajectory()), state._x, state._y)
                     loss += rnn.train(trajectory, l1_coef=0)

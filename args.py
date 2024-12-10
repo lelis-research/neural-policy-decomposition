@@ -24,11 +24,11 @@ class Args:
     # env_id: str = "BreakoutNoFrameskip-v4"
     env_id: str = "ComboGrid-v0"
     """the id of the environment"""
-    total_timesteps: int = 3000000
+    total_timesteps: int = 30000000
     """total timesteps of the experiments"""
     learning_rate: float = 2.5e-4
     """the learning rate of the optimizer"""
-    value_learning_rate: float = 2.5e-4
+    value_learning_rate: float = 1.5e-4
     """the learning rate of the optimizer for value network"""
     num_envs: int = 16
     """the number of parallel game environments"""
@@ -72,11 +72,11 @@ class Args:
     "toggles fine tuning mode"
     episode_length: int = 30
     "maximum episode length"
-    game_width: int = 3
+    game_width: int = 5
     "the width of the grid"
     visitation_bonus: bool = True
     "toggles using visitation bonus in calculating reward"
-    use_options: int = 0
+    use_options: int = 1
     "set to 0 for not using options, and 1 for using options when training"
 
     # to be filled in runtime

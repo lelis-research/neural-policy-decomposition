@@ -9,7 +9,7 @@ import copy
 from graphviz import Digraph
 
 device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
-done = torch.zeros(1).to(device)
+next_done = torch.zeros(1).to(device)
 
 class Mode:
     def __init__(self, hidden, transitions, rewire=False):
@@ -46,7 +46,7 @@ class Automaton:
 
     def generate_modes(self, env_init=None):
         if env_init is None:
-            env = Game(3,3,self._problem)
+            env = Game(5,5,self._problem)
         else:
             env = copy.deepcopy(env_init)
         h = self._model.init_hidden()
@@ -55,7 +55,7 @@ class Automaton:
         while not env.is_over():
             h_old = h
             x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
-            prob_actions, h = self._model(x_tensor, h_old)
+            action, logprob, _, value, h = self._model.get_action_and_value(x_tensor, h_old, next_done)
             h_val = tuple(h_old.clone().detach().numpy().flatten())
             if h_val not in self._modes:
                 self._adjacency_dict[h_val] = set()
@@ -64,7 +64,7 @@ class Automaton:
             mode = self._modes[h_val]
             self._adjacency_dict[h_val].add(tuple(h.clone().detach().numpy().flatten()))
             mode._transitions.add(tuple(h.clone().detach().numpy().flatten()))
-            a = torch.argmax(prob_actions).item()
+            a = int(action[0])
             env.apply_action(a)
         #last hidden state
         h_val = tuple(h.clone().detach().numpy().flatten())
@@ -100,7 +100,7 @@ class Automaton:
     def transition(self, env_init, hidden_state=None, apply_actions=False):
         if hidden_state is None:
              mode = self._initial_mode
-             h = torch.tensor(mode._h).view(1, -1)
+             h = torch.tensor(mode._h).view(1, -1).unsqueeze(1)
         else: 
             h = hidden_state
             h_val = tuple(h.clone().detach().numpy().flatten())
@@ -109,23 +109,23 @@ class Automaton:
         terminate = False
         ep_len = 0
         env = copy.deepcopy(env_init)
-        while not terminate and ep_len < 12 and not env.is_over():
+        while not terminate and ep_len < 30 and not env.is_over():
             x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
-            prob_actions, h = self._model(x_tensor, h)
+            action, logprob, _, value, h = self._model.get_action_and_value(x_tensor, h, next_done)
             h_val = tuple(h.clone().detach().numpy().flatten())
             if len(mode._transitions) > 1:
                 if h_val in mode._transitions:
                     mode = self._modes[h_val]
-                    h = torch.tensor(mode._h).view(1, -1)
+                    h = torch.tensor(mode._h).view(1, -1).unsqueeze(1)
                 else:
                     terminate = True
             elif len(mode._transitions) == 1:
                     mode = self._modes[list(mode._transitions)[0]]
-                    h = torch.tensor(mode._h).view(1, -1)
+                    h = torch.tensor(mode._h).view(1, -1).unsqueeze(1)
             else:
                 terminate = True
             if not terminate:
-                action = torch.argmax(prob_actions).item()
+                action = action[0]
                 actions.append(action)
                 env.apply_action(action)
             ep_len += 1
@@ -311,7 +311,7 @@ def main():
     # problem = "BR-TL"
     # problem = "BL-TR"
 
-    env = Game(3, 3, problem)
+    env = Game(5, 5, problem)
     rnn = QuantizedRNN(21, 4, 3)
     hidden_states = []
     rnn.load_state_dict(torch.load(f'binary/quantized-game-width' + str(3) + '-' + problem + '-rnn-noreg-' + str(4) + '-model.pth', weights_only=True))

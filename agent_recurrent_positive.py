@@ -1,5 +1,3 @@
-import os
-os.environ["OMP_NUM_THREADS"] = "1"
 import random
 import time
 import pickle
@@ -17,15 +15,14 @@ from combo import Game
 from combo_gym import ComboGym
 from args import Args
 from model_recurrent import LstmAgent, GruAgent
-print("Importing libs completed")
 
     
-def make_env(problem, episode_length=None, width=3, visitation_bonus=True, options=[]):
+def make_env(problem, episode_length=None, width=3, visitation_bonus=False, options=[]):
     def thunk():
         if use_options:
             env = ComboGym(rows=width, columns=width, problem=problem, random_initial=False, episode_length=episode_length, options=options, visitation_bonus=visitation_bonus)
         else:
-            env = ComboGym(rows=width, columns=width, problem=problem, random_initial=True, episode_length=episode_length, visitation_bonus=visitation_bonus)
+            env = ComboGym(rows=width, columns=width, problem=problem, random_initial=True, episode_length=episode_length, visitation_bonus=False)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
@@ -66,7 +63,7 @@ if __name__ == "__main__":
     )
     options = []
     if use_options == 1:
-        with open("options/run-beluga-widrh-5-4-prob-6Dec/selected_options_0.pkl", "rb") as file:
+        with open("options/run2/selected_options_2.pkl", "rb") as file:
             options = pickle.load(file)
 
     # TRY NOT TO MODIFY: seeding
@@ -113,6 +110,7 @@ if __name__ == "__main__":
     next_obs, _ = envs.reset(seed=args.seed)
     next_obs = torch.Tensor(next_obs).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
+    next_trunc = torch.zeros(args.num_envs).to(device)
     if args.rnn_type == 'lstm':
         next_rnn_state = (
             torch.zeros(agent.lstm.num_layers, args.num_envs, agent.lstm.hidden_size).to(device),
@@ -136,8 +134,9 @@ if __name__ == "__main__":
                     param_group['lr'] = lr_value
                 elif param_group.get('name') == 'other':
                     param_group['lr'] = lr_other
-
+        init_state = torch.zeros(args.num_envs).to(device)
         for step in range(0, args.num_steps):
+
             global_step += args.num_envs
             obs[step] = next_obs
             dones[step] = next_done
@@ -165,7 +164,7 @@ if __name__ == "__main__":
                         writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                         writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
                         if args.track:
-                            wandb.log({"episodic_return":info["episode"]["r"], "episodic_length": info["episode"]["l"]})
+                            wandb.log({"episodic_return":info["episode"]["r"]})
 
         # bootstrap value if not done
         with torch.no_grad():
@@ -291,7 +290,7 @@ if __name__ == "__main__":
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
         if args.track:
-            wandb.log({"value_loss": v_loss.item(), "policy_loss":pg_loss.item(),"entropy":entropy_loss.item(), "lr":lr_other, "valuelr":lr_value, "clipfac":np.mean(clipfracs), "old_approx_kl": old_approx_kl.item(), "approx_kl": approx_kl.item(), "explained_variance": explained_var})
+            wandb.log({"value_loss": v_loss.item(), "policy_loss":pg_loss.item(),"entropy":entropy_loss.item(), "lr":lr_other, "valuelr":lr_value, "clipfac":np.mean(clipfracs), "gradient":np.mean(gradients)})
     envs.close()
     writer.close()
 

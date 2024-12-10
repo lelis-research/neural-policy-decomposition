@@ -20,7 +20,7 @@ device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
 import numpy as np
 def make_env(problem, options=None):
     def thunk():
-        env = ComboGym(problem=problem, options=options, random_initial=True)
+        env = ComboGym(rows=5, columns=5, problem=problem, options=options, random_initial=True)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
@@ -157,14 +157,14 @@ def extract_options():
         base_automata[problems[i]] = []
         print('Extracting from model ', problems[i])
 
-        env = Game(3, 3, problems[i])
-    #     env_sync = gym.vector.SyncVectorEnv(
-    #     [make_env(problems[i])],
-    # )
-        rnn = QuantizedRNN(21, 32, 10)
-        rnn.load_state_dict(torch.load(f'binary/run2/game-width' + str(3) + '-' + problems[i] + '-noreg-' + str(32) + '.pth', weights_only=True))
-
-        with open('trajectories/run2/game-width' + str(3) + '-' + problems[i] + '-quantized-mult-traj-model-' + str(32) + '.pkl', 'rb') as f:
+        # env = Game(5, 5, problems[i])
+        env = gym.vector.SyncVectorEnv(
+        [make_env(problems[i])],
+    )
+        rnn = GruAgent(env,64, option_len=0, greedy=True)
+        rnn.load_state_dict(torch.load(f'models/run-beluga-widrh-5-4-prob-6Dec/models/{problems[i]}/gru-64-30-90-{problems[i]}-1-0-quantized.pt'))
+        rnn.eval()
+        with open (f'trajectories/run-beluga-widrh-5-4-prob-6Dec/{problems[i]}-1-0-quantized-mult-traj-model-' + str(64) + '.pkl', 'rb') as f:
             trajectory = pickle.load(f)
         full_automaton = Automaton(rnn, problems[i])
         for traj in trajectory: 
@@ -197,7 +197,7 @@ def extract_options():
         # trajectory = _rollout(rnn, env)
 
         #Load trajectories
-        with open('trajectories/run2/game-width' + str(3) + '-' + problem + '-quantized-mult-traj-model-' + str(32) + '.pkl', 'rb') as f:
+        with open ('trajectories/run-beluga-widrh-5-4-prob-6Dec/' + problem + '-1-0-quantized-mult-traj-model-' + str(64) + '.pkl', 'rb') as f:
             trajectory = pickle.load(f)
 
         trajectories[problem] = trajectory
@@ -259,6 +259,6 @@ automata = extract_options()
 # for i, a in enumerate(automata):
 #     a.print_image('images/automata/sub-' + a._problem + '-quantized-naive'+str(i))
 
-with open("options/run2/selected_options_2.pkl", "wb") as file:
+with open("options/run-beluga-widrh-5-4-prob-6Dec/selected_options_0.pkl", "wb") as file:
     pickle.dump(automata, file)
 
