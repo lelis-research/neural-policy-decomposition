@@ -125,15 +125,14 @@ class Automaton:
             else:
                 terminate = True
             if not terminate:
-                action = action[0]
+                action = int(action[0])
                 actions.append(action)
                 env.apply_action(action)
             ep_len += 1
-        if ep_len >= 12:
+        if ep_len >= 30:
             return False, actions
         if apply_actions:
             for a in actions:
-                # print(a)
                 env_init.apply_action(a)
         return True, actions
     

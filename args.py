@@ -11,7 +11,7 @@ class Args:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
-    track: bool = True
+    track: bool = False
     """if toggled, this experiment will be tracked with Weights and Biases"""
     wandb_project_name: str = "PPOwithRandomInitial5x5Test"
     """the wandb's project name"""
@@ -32,7 +32,7 @@ class Args:
     """the learning rate of the optimizer for value network"""
     num_envs: int = 16
     """the number of parallel game environments"""
-    num_steps: int = 90
+    num_steps: int = 150
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: bool = True
     """Toggle learning rate annealing for policy and value networks"""
@@ -70,7 +70,7 @@ class Args:
     "Problem"
     fine_tune: bool = False
     "toggles fine tuning mode"
-    episode_length: int = 30
+    episode_length: int = 50
     "maximum episode length"
     game_width: int = 5
     "the width of the grid"
