@@ -30,9 +30,9 @@ class Args:
     """the learning rate of the optimizer"""
     value_learning_rate: float = 1.5e-4
     """the learning rate of the optimizer for value network"""
-    num_envs: int = 16
+    num_envs: int = 8
     """the number of parallel game environments"""
-    num_steps: int = 150
+    num_steps: int = 50
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: bool = True
     """Toggle learning rate annealing for policy and value networks"""
@@ -64,19 +64,19 @@ class Args:
     "weight decay for l2 regularization"
     l1_lambda: float = 0
     "l1 lambda regularization"
-    hidden_size: int = 256
+    hidden_size: int = 64
     "size of RNN hidden states"
-    problem: str = "test"
+    problem: str = "TL-BR"
     "Problem"
     fine_tune: bool = False
     "toggles fine tuning mode"
-    episode_length: int = 50
+    episode_length: int = 20
     "maximum episode length"
-    game_width: int = 5
+    game_width: int = 3
     "the width of the grid"
     visitation_bonus: bool = True
     "toggles using visitation bonus in calculating reward"
-    use_options: int = 1
+    use_options: int = 0
     "set to 0 for not using options, and 1 for using options when training"
 
     # to be filled in runtime

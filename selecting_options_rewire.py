@@ -2,6 +2,8 @@ import copy
 import math
 import torch
 import pickle
+import multiprocessing
+from functools import partial
 import random
 from extract_automaton_quantized import Automaton
 from extract_automaton_quantized import SubAutomataExtractor
@@ -138,8 +140,6 @@ def _rollout(agent, env):
     _h = None
     return traj
 
-
-
 def extract_options():
     """
     This is the function to perform the selection of sub-automata from the automaton extract from recurrent models.
@@ -177,7 +177,7 @@ def extract_options():
         for automaton in base_automata[problems[i]]:
             # this will generate an image with the complete automaton extracted from each neural model
             # the images can be quite helpful for debugging purposes.
-            automaton.print_image('images/base-' + problems[i] + '-' + str(counter))
+            # automaton.print_image('images/base-' + problems[i] + '-' + str(counter))
             counter += 1
 
             sub_extractor = SubAutomataExtractor(automaton, width_automaton)
@@ -217,31 +217,63 @@ def extract_options():
         best_loss = None
         best_automaton = None
         best_size = None
+        list_automata = []
 
         for problem_automaton, automata in sub_automata.items():
             for automaton in automata:
+                list_automata.append((selected_automata + [automaton], problem_automaton))
 
-                levin_loss = loss.compute_loss(selected_automata + [automaton], problem_automaton, trajectories, number_actions)
-                # print(levin_loss)
+        fixed_args = {'trajectories': trajectories, 'number_actions': number_actions}
+        partial_function = partial(loss.compute_loss, **fixed_args)
+        with multiprocessing.Pool(processes=6) as pool:  # Adjust the number of processes here
+            losses = pool.starmap(partial_function, list_automata)
 
-                if best_loss is None or levin_loss < best_loss:
-                    best_loss = levin_loss
-                    best_automaton = automaton
-                    best_size = automaton.get_size()
-                    # print(best_size, levin_loss < best_loss)
+        losses_with_automaton = list(zip(losses, list_automata))
+
+        for opt_loss, automaton in losses_with_automaton:
+            if best_loss is None or opt_loss < best_loss:
+                    best_loss = opt_loss
+                    best_automaton = automaton[0][-1]
+                    best_size = automaton[0][-1].get_size()
+
                 # The following statement ensures that we prefer smaller automaton in case
                 # of ties in the Levin loss. The minus 0.01 is to avoid precision issues 
                 # while detecting ties. 
 
-                elif levin_loss - 0.01 < best_loss and automaton.get_size() < best_size:
-                    best_loss = levin_loss
-                    best_automaton = automaton
-                    best_size = automaton.get_size()
+            elif opt_loss - 0.01 < best_loss and automaton[0][-1].get_size() < best_size:
+                best_loss = opt_loss
+                best_automaton = automaton[0][-1]
+                best_size = automaton[0][-1].get_size()
 
-        # we recompute the Levin loss after the automaton is selected so that we can use 
-        # the loss on all trajectories as the stopping condition for selecting automata
         selected_automata.append(best_automaton)
         best_loss = loss.compute_loss(selected_automata, "", trajectories, number_actions)
+        print("Levin loss of the current set: ", best_loss)
+
+
+        # for problem_automaton, automata in sub_automata.items():
+        #     for automaton in automata:
+
+        #         levin_loss = loss.compute_loss(selected_automata + [automaton], problem_automaton, trajectories, number_actions)
+        #         # print(levin_loss)
+
+        #         if best_loss is None or levin_loss < best_loss:
+        #             best_loss = levin_loss
+        #             best_automaton = automaton
+        #             best_size = automaton.get_size()
+        #             # print(best_size, levin_loss < best_loss)
+        #         # The following statement ensures that we prefer smaller automaton in case
+        #         # of ties in the Levin loss. The minus 0.01 is to avoid precision issues 
+        #         # while detecting ties. 
+
+        #         elif levin_loss - 0.01 < best_loss and automaton.get_size() < best_size:
+        #             best_loss = levin_loss
+        #             best_automaton = automaton
+        #             best_size = automaton.get_size()
+
+        # # we recompute the Levin loss after the automaton is selected so that we can use 
+        # # the loss on all trajectories as the stopping condition for selecting automata
+        # selected_automata.append(best_automaton)
+        # best_loss = loss.compute_loss(selected_automata, "", trajectories, number_actions)
 
         print("Levin loss of the current set: ", best_loss)
 
@@ -254,11 +286,11 @@ def extract_options():
     #     counter += 1
     return selected_automata
 
+if __name__ == "__main__":
+    automata = extract_options()
+    # for i, a in enumerate(automata):
+    #     a.print_image('images/automata/sub-' + a._problem + '-quantized-naive'+str(i))
 
-automata = extract_options()
-# for i, a in enumerate(automata):
-#     a.print_image('images/automata/sub-' + a._problem + '-quantized-naive'+str(i))
-
-with open("options/run-beluga-widrh-5-4-prob-6Dec/selected_options_0.pkl", "wb") as file:
-    pickle.dump(automata, file)
+    with open("options/run-beluga-widrh-5-4-prob-6Dec/selected_options_1.pkl", "wb") as file:
+        pickle.dump(automata, file)
 
