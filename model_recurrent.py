@@ -96,11 +96,12 @@ class LstmAgent(nn.Module):
         return action, probs.log_prob(action), probs.entropy(), self.critic(concatenated), lstm_state
 
 class GruAgent(nn.Module):
-    def __init__(self, envs, h_size=64, feature_extractor=False, greedy=False, option_len=0):
+    def __init__(self, envs, h_size=64, feature_extractor=False, greedy=False, option_len=0, quantized=1):
         super().__init__()
         self.input_to_actor = False
         self.hidden_size = h_size
         self.greedy = greedy
+        self.quantized = quantized
         if feature_extractor:
             self.network = nn.Sequential(
                 layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
@@ -163,7 +164,8 @@ class GruAgent(nn.Module):
         new_hidden = []
         for h, d in zip(hidden, done):
             h, gru_state = self.gru(h.unsqueeze(0), (1.0 - d).view(1, -1, 1) * gru_state)
-            gru_state = STEQuantize.apply(gru_state)
+            if self.quantized == 1:
+                gru_state = STEQuantize.apply(gru_state)
             new_hidden += [h]
         new_hidden = torch.flatten(torch.cat(new_hidden), 0, 1)
         return new_hidden, gru_state

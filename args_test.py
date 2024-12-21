@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass
 
 @dataclass
-class Args:
+class ArgsTest:
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
     """the name of this experiment"""
     seed: int = 1

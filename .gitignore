@@ -19,3 +19,4 @@ test_gru_l1.py
 selected_options.pkl
 trajectories/*
 wandb/*
+options/*

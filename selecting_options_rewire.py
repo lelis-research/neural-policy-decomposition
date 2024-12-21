@@ -1,8 +1,10 @@
 import copy
+import os
 import math
 import torch
 import pickle
 import multiprocessing
+import gc
 from functools import partial
 import random
 from extract_automaton_quantized import Automaton
@@ -38,6 +40,7 @@ class LevinLossAutomaton:
         automaton if it has less than 2 actions, as it would be equivalent to a 
         primitive action. 
         """
+        # print(f"Process {os.getpid()} computing square of {random.random()}")
         if not finished or len(actions) <= 1 or len(actions) + j > len(trajectory):
             return False
         
@@ -140,7 +143,7 @@ def _rollout(agent, env):
     _h = None
     return traj
 
-def extract_options():
+def extract_options(seed=1):
     """
     This is the function to perform the selection of sub-automata from the automaton extract from recurrent models.
 
@@ -162,9 +165,9 @@ def extract_options():
         [make_env(problems[i])],
     )
         rnn = GruAgent(env,64, option_len=0, greedy=True)
-        rnn.load_state_dict(torch.load(f'models/run-beluga-widrh-5-4-prob-6Dec/models/{problems[i]}/gru-64-30-90-{problems[i]}-1-0-quantized.pt'))
+        rnn.load_state_dict(torch.load(f'models/{seed}/{problems[i]}.pt'))
         rnn.eval()
-        with open (f'trajectories/run-beluga-widrh-5-4-prob-6Dec/{problems[i]}-1-0-quantized-mult-traj-model-' + str(64) + '.pkl', 'rb') as f:
+        with open (f'trajectories/{seed}/{problems[i]}.pkl', 'rb') as f:
             trajectory = pickle.load(f)
         full_automaton = Automaton(rnn, problems[i])
         for traj in trajectory: 
@@ -197,7 +200,7 @@ def extract_options():
         # trajectory = _rollout(rnn, env)
 
         #Load trajectories
-        with open ('trajectories/run-beluga-widrh-5-4-prob-6Dec/' + problem + '-1-0-quantized-mult-traj-model-' + str(64) + '.pkl', 'rb') as f:
+        with open (f'trajectories/{seed}/{problem}.pkl', 'rb') as f:
             trajectory = pickle.load(f)
 
         trajectories[problem] = trajectory
@@ -210,7 +213,7 @@ def extract_options():
     # computing the Levin loss without options, for reference
     loss_no_automata = loss.compute_loss([], '', trajectories, number_actions)
     print('Loss with no automata: ', loss_no_automata)
-
+    ncpus = int(os.environ.get('SLURM_CPUS_PER_TASK',default=1))
     while previous_loss is None or best_loss < previous_loss:
         previous_loss = best_loss
 
@@ -225,7 +228,7 @@ def extract_options():
 
         fixed_args = {'trajectories': trajectories, 'number_actions': number_actions}
         partial_function = partial(loss.compute_loss, **fixed_args)
-        with multiprocessing.Pool(processes=6) as pool:  # Adjust the number of processes here
+        with multiprocessing.Pool(processes=ncpus) as pool:  # Adjust the number of processes here
             losses = pool.starmap(partial_function, list_automata)
 
         losses_with_automaton = list(zip(losses, list_automata))
@@ -233,7 +236,7 @@ def extract_options():
         for opt_loss, automaton in losses_with_automaton:
             if best_loss is None or opt_loss < best_loss:
                     best_loss = opt_loss
-                    best_automaton = automaton[0][-1]
+                    best_automaton = copy.deepcopy(automaton[0][-1])
                     best_size = automaton[0][-1].get_size()
 
                 # The following statement ensures that we prefer smaller automaton in case
@@ -242,13 +245,13 @@ def extract_options():
 
             elif opt_loss - 0.01 < best_loss and automaton[0][-1].get_size() < best_size:
                 best_loss = opt_loss
-                best_automaton = automaton[0][-1]
+                best_automaton = copy.deepcopy(automaton[0][-1])
                 best_size = automaton[0][-1].get_size()
 
         selected_automata.append(best_automaton)
         best_loss = loss.compute_loss(selected_automata, "", trajectories, number_actions)
         print("Levin loss of the current set: ", best_loss)
-
+        gc.collect()
 
         # for problem_automaton, automata in sub_automata.items():
         #     for automaton in automata:
@@ -275,22 +278,11 @@ def extract_options():
         # selected_automata.append(best_automaton)
         # best_loss = loss.compute_loss(selected_automata, "", trajectories, number_actions)
 
-        print("Levin loss of the current set: ", best_loss)
+        # print("Levin loss of the current set: ", best_loss)
 
     # remove the last automaton added
     selected_automata = selected_automata[0:len(selected_automata) - 1]
 
-    counter = 1
-    # for automaton in selected_automata:
-    #     automaton.print_image('images/test-' + str(counter))
-    #     counter += 1
-    return selected_automata
-
-if __name__ == "__main__":
-    automata = extract_options()
-    # for i, a in enumerate(automata):
-    #     a.print_image('images/automata/sub-' + a._problem + '-quantized-naive'+str(i))
-
-    with open("options/run-beluga-widrh-5-4-prob-6Dec/selected_options_1.pkl", "wb") as file:
+    with open(f"options/{seed}/selected_options.pkl", "wb") as file:
         pickle.dump(automata, file)
 

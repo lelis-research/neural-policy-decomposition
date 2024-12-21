@@ -16,13 +16,14 @@ from torch.utils.tensorboard import SummaryWriter
 from combo import Game
 from combo_gym import ComboGym
 from args import Args
+from args_test import ArgsTest
 from model_recurrent import LstmAgent, GruAgent
 print("Importing libs completed")
 
     
 def make_env(problem, episode_length=None, width=3, visitation_bonus=True, options=[]):
     def thunk():
-        if use_options:
+        if len(options) > 0:
             env = ComboGym(rows=width, columns=width, problem=problem, random_initial=False, episode_length=episode_length, options=options, visitation_bonus=visitation_bonus)
         else:
             env = ComboGym(rows=width, columns=width, problem=problem, random_initial=True, episode_length=episode_length, visitation_bonus=visitation_bonus)
@@ -39,13 +40,18 @@ def _l1_norm(model, lambda_l1):
             l1_loss += torch.sum(torch.abs(param))
     return lambda_l1 * l1_loss
 
-if __name__ == "__main__":
-    args = tyro.cli(Args)
+def train_model(problem="test", option_dir=None):
+    if problem == "test":
+        args = tyro.cli(ArgsTest)
+    else:
+        args = tyro.cli(Args)
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
-    use_options = args.use_options
-    run_name = f"{args.rnn_type}-{args.hidden_size}-{args.episode_length}-{args.num_steps}-{args.problem}-{args.seed}-{use_options}-quantized"
+    use_options = 0
+    if option_dir is not None:
+        use_options = 1
+    run_name = f"{args.rnn_type}-{args.hidden_size}-{args.episode_length}-{args.num_steps}-{problem}-{args.seed}-{use_options}-quantized"
     print(run_name)
     if args.track:
         import wandb
@@ -66,7 +72,7 @@ if __name__ == "__main__":
     )
     options = []
     if use_options == 1:
-        with open("options/run-beluga-widrh-5-4-prob-6Dec/selected_options_0.pkl", "rb") as file:
+        with open(option_dir, "rb") as file:
             options = pickle.load(file)
 
     # TRY NOT TO MODIFY: seeding
@@ -79,14 +85,14 @@ if __name__ == "__main__":
 
     # env setup
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args.problem, args.episode_length, args.game_width, args.visitation_bonus, options) for i in range(args.num_envs)],
+        [make_env(problem, args.episode_length, args.game_width, args.visitation_bonus, options) for i in range(args.num_envs)],
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     if args.rnn_type == 'lstm':
         agent = LstmAgent(envs, args.hidden_size).to(device)
     elif args.rnn_type == 'gru':
-        agent = GruAgent(envs, args.hidden_size, option_len=len(options)).to(device)
+        agent = GruAgent(envs, args.hidden_size, option_len=len(options), quantized=args.quantized).to(device)
     else:
         print("Unknown type of model. Please choose between either LSTM or GRU.")
         exit()
@@ -294,5 +300,8 @@ if __name__ == "__main__":
             wandb.log({"value_loss": v_loss.item(), "policy_loss":pg_loss.item(),"entropy":entropy_loss.item(), "lr":lr_other, "valuelr":lr_value, "clipfac":np.mean(clipfracs), "old_approx_kl": old_approx_kl.item(), "approx_kl": approx_kl.item(), "explained_variance": explained_var})
     envs.close()
     writer.close()
+    os.mkdir(f'models/{args.seed}')
+    torch.save(agent.state_dict(), f'models/{args.seed}/{args.problem}.pt')
 
-    torch.save(agent.state_dict(), f'models/{args.problem}/{run_name}.pt')
+if __name__ == "__main__":
+    train_model()

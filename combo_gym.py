@@ -29,19 +29,39 @@ class ComboGym(gym.Env):
     def step(self, action:int):
         trunctuated = False
         action = int(action)
+        #reward is 0 in goal state and -1 everywhere else
+        #add exploration bonus to reward to encourage agent to visit less visited states
         if action > 2:
-            is_applicable, actions = self._options[action - len(self._game.get_actions())].transition(self._game, apply_actions=True)
+            is_applicable, actions = self._options[action - len(self._game.get_actions())].transition(self._game, apply_actions=False)
+            if is_applicable:
+                reward = 0
+                for a in actions:
+                    self._game.apply_action(a)
+                    self.n_steps += 1
+                    if not self._game.is_over():
+                        if self._visitation_bonus:
+                            reward += -1 + self._game.get_exploration_bonus()
+                        else:
+                            reward += -1
+                    else:
+                        reward += 0
+                        break
+                    if self.n_steps == self.ep_len:
+                        trunctuated = True
+                        break
+
+
         else:
             self._game.apply_action(action)
-        self.n_steps += 1
+            reward = -1
+            self.n_steps += 1
+            if self._visitation_bonus:
+                reward += self._game.get_exploration_bonus()
+            if self._game.is_over():
+                reward = 0
+
         terminated = self._game.is_over()
-        #reward is 0 in goal state and -1 everywhere else
-        reward = -1
-        #add exploration bonus to reward to encourage agent to visit less visited states
-        if self._visitation_bonus:
-            reward += self._game.get_exploration_bonus()
-        if terminated:
-            reward = 0
+
         #info about each step, Not being used 
         info = self._game.__repr__()
 
