@@ -10,8 +10,18 @@ import copy
 import numpy as np
 import pickle
 from selecting_options_rewire import extract_options
+import gymnasium as gym
+from combo_gym import ComboGym
 
 device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
+
+def make_env( problem, episode_length=None, width=5):
+    def thunk():
+        env = ComboGym(rows=width, columns=width, problem=problem, random_initial=False, episode_length=episode_length)
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        return env
+
+    return thunk
 
 class Trajectory:
     def __init__(self):
@@ -24,6 +34,9 @@ class Trajectory:
         return self._sequence
     
 def generate_trajectories(args, problem):
+        env = gym.vector.SyncVectorEnv(
+        [make_env(problem) for i in range(1)],
+        )
         rnn = GruAgent(env,args.hidden_size, option_len=0, greedy=True)
         rnn.load_state_dict(torch.load(f'models/{args.seed}/{problem}.pt'))
         rnn.eval()
@@ -55,7 +68,9 @@ def generate_trajectories(args, problem):
                     counter += 1
                 if len(traj.get_trajectory()) > 0 and env.is_over():
                     trajectories.append(traj)
-        os.mkdir(f'trajectories/{args.seed}')
+        if not os.path.exists(f'trajectories/{args.seed}'):
+            os.mkdir(f'trajectories/{args.seed}')
+        print(trajectories)
         with open (f'trajectories/{args.seed}/{problem}.pkl', 'wb') as f:
             pickle.dump(trajectories, f)
 

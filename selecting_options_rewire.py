@@ -282,7 +282,8 @@ def extract_options(seed=1):
 
     # remove the last automaton added
     selected_automata = selected_automata[0:len(selected_automata) - 1]
-
+    if not os.path.exists(f"options/{seed}/selected_options.pkl"):
+        os.mkdir(f"options/{seed}/selected_options.pkl")
     with open(f"options/{seed}/selected_options.pkl", "wb") as file:
         pickle.dump(automata, file)
 

@@ -300,8 +300,9 @@ def train_model(problem="test", option_dir=None):
             wandb.log({"value_loss": v_loss.item(), "policy_loss":pg_loss.item(),"entropy":entropy_loss.item(), "lr":lr_other, "valuelr":lr_value, "clipfac":np.mean(clipfracs), "old_approx_kl": old_approx_kl.item(), "approx_kl": approx_kl.item(), "explained_variance": explained_var})
     envs.close()
     writer.close()
-    os.mkdir(f'models/{args.seed}')
-    torch.save(agent.state_dict(), f'models/{args.seed}/{args.problem}.pt')
+    if not os.path.exists(f'models/{args.seed}'):
+        os.mkdir(f'models/{args.seed}')
+    torch.save(agent.state_dict(), f'models/{args.seed}/{problem}.pt')
 
 if __name__ == "__main__":
     train_model()

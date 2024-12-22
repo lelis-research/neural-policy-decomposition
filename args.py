@@ -11,7 +11,7 @@ class Args:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
-    track: bool = False
+    track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
     wandb_project_name: str = "PPOwithRandomInitial5x5Test"
     """the wandb's project name"""
@@ -24,7 +24,7 @@ class Args:
     # env_id: str = "BreakoutNoFrameskip-v4"
     env_id: str = "ComboGrid-v0"
     """the id of the environment"""
-    total_timesteps: int = 35000000
+    total_timesteps: int = 20000000
     """total timesteps of the experiments"""
     learning_rate: float = 2.5e-4
     """the learning rate of the optimizer"""
@@ -32,7 +32,7 @@ class Args:
     """the learning rate of the optimizer for value network"""
     num_envs: int = 8
     """the number of parallel game environments"""
-    num_steps: int = 150
+    num_steps: int = 90
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: bool = True
     """Toggle learning rate annealing for policy and value networks"""
@@ -64,19 +64,19 @@ class Args:
     "weight decay for l2 regularization"
     l1_lambda: float = 0
     "l1 lambda regularization"
-    hidden_size: int = 256
+    hidden_size: int = 64
     "size of RNN hidden states"
     problem: str = "test"
     "Problem"
     fine_tune: bool = False
     "toggles fine tuning mode"
-    episode_length: int = 50
+    episode_length: int = 30
     "maximum episode length"
     game_width: int = 5
     "the width of the grid"
     visitation_bonus: bool = True
     "toggles using visitation bonus in calculating reward"
-    use_options: int = 1
+    use_options: int = 0
     "set to 0 for not using options, and 1 for using options when training"
     quantized: int = 1
     "set to 0 for models without quantized hidden states, and 1 models with quantized hidden states"
