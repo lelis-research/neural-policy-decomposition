@@ -25,7 +25,7 @@ class Args:
     """the id of the environment corresponding to the trained agent
     choices from [ComboGrid, MiniGrid-SimpleCrossingS9N1-v0]
     """
-    env_seeds: Union[List[int], str] = (0,1,2,3)
+    env_seeds: Union[List[int], str] = (0,1,2)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""

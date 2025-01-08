@@ -26,16 +26,16 @@ from utils.utils import timing_decorator
 class Args:
     exp_id: str = ""
     """the id to be set for the experiment"""
-    exp_name: str = "Option Extraction"
+    exp_name: str = "sparse_initializations"
     """the name of this experiment"""
     problems: List[str] = ("TL-BR", "TR-BL", "BR-TL", "BL-TR")
     """"""
     seeds: Union[List[int], str] = (0,1,2)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
     model_paths: List[str] = (
-        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_sd0',
-        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd1',
-        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd2'
+        'sparse_initializations_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_sd0',
+        'sparse_initializations_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd1',
+        'sparse_initializations_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd2'
     )
     # model_paths: List[str] = (
     #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd0_TL-BR',
@@ -96,9 +96,10 @@ def process_args() -> Args:
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
     # setting the experiment id
-    args.exp_id = f'{args.exp_name}_{args.env_id}' + \
-    f'_gw{args.game_width}_h{args.hidden_size}_l1{args.l1_lambda}' + \
-    f'_r{args.number_restarts}_sd{",".join(map(str, args.seeds))}'
+    if args.exp_id == "":
+        args.exp_id = f'{args.exp_name}_{args.env_id}' + \
+        f'_gw{args.game_width}_h{args.hidden_size}_l1{args.l1_lambda}' + \
+        f'_r{args.number_restarts}_sd{",".join(map(str, args.seeds))}'
 
     # updating log path
     args.log_path = os.path.join(args.log_path, args.exp_id, f"seed={str(args.seed)}")
@@ -878,7 +879,7 @@ def whole_dec_options_training_data_levin_loss():
                  trajectories=trajectories,
                  args=args, 
                  logger=logger)
-    
+
     utils.logger_flush(logger)
 
     loss.print_output_subpolicy_trajectory(selected_mask_models, trajectories, logger=logger)
@@ -928,7 +929,6 @@ def learn_mask(agent: PPOAgent, trajectories: dict, args: Args):
             # Backward pass and optimization
             optimizer.zero_grad()
             mask_loss.backward()
-            print(mask_loss)
             
             torch.nn.utils.clip_grad_norm_([mask], max_norm=args.max_grad_norm)
             optimizer.step()
@@ -957,7 +957,7 @@ def learn_options():
     args = process_args()
     
     # Logger configurations
-    logger = utils.get_logger('whole_dec_options', args.log_level, args.log_path, suffix="option_extraction")
+    logger = utils.get_logger('learn_options', args.log_level, args.log_path, suffix="learn_option")
 
     game_width = args.game_width
     number_actions = 3
@@ -1106,12 +1106,12 @@ def learn_options():
                  trajectories=trajectories,
                  args=args, 
                  logger=logger)
-    
+
     utils.logger_flush(logger)
 
     levin_loss.print_output_subpolicy_trajectory(selected_mask_models, trajectories, logger=logger)
     utils.logger_flush(logger)
-    
+
 
 def main():
     # hill_climbing_mask_space_training_data()

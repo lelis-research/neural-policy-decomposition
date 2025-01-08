@@ -18,7 +18,7 @@ from environemnts.environments_minigrid import make_env_four_rooms
 
 @dataclass
 class Args:
-    exp_id: str = "learn_options_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_r400_sd0,1,2_olen2,3,4,5,6,7,8,9,10,11,12,13,14"
+    exp_id: str = "sparse_initialization_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_r400_sd0,1,2_olen2,3,4,5,6,7,8,9,10,11,12,13,14,15"
     """The ID of the finished experiment"""
     env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
     """the id of the environment corresponding to the trained agent
@@ -45,19 +45,21 @@ class Args:
     # Testing specific arguments
     test_exp_id: str = ""
     """The ID of the new experiment"""
-    test_exp_name: str = "Option Extraction"
+    test_exp_name: str = "sparse_initialization"
     """the name of this experiment"""
     test_env_id: str = "MiniGrid-FourRooms-v0"
     """the id of the environment for testing
     choices from [ComboGrid, MiniGrid-FourRooms-v0]"""
     test_problems: List[str] = tuple()
     """"""
-    test_seeds: Union[List[int], str] = (41,51,8)
+    # test_seeds: Union[List[int], str] = (41,51,8)
+    test_seeds: Union[List[int], str] = (51,8)
     """the seeds of the environment for testing"""
     total_timesteps: int = 1_500_000
     """total timesteps for testing"""
     # learning_rate: Union[List[float], float] = (0.0005, 0.0005, 5e-05) # Vanilla RL
-    learning_rate: Union[List[float], float] = (0.0005, 0.001, 0.001)
+    learning_rate: Union[List[float], float] = (0.001, 0.001)
+    # learning_rate: Union[List[float], float] = (0.0005, 0.001, 0.001)
     """the learning rate of the optimize for testing"""
     num_envs: int = 4
     """the number of parallel game environments for testing"""
@@ -76,12 +78,14 @@ class Args:
     norm_adv: bool = True
     """Toggles advantages normalization for testing"""
     # clip_coef: Union[List[float], float] = (0.15, 0.1, 0.2) # Vanilla RL
-    clip_coef: Union[List[float], float] = (0.25, 0.2, 0.2)
+    clip_coef: Union[List[float], float] = (0.2, 0.2)
+    # clip_coef: Union[List[float], float] = (0.25, 0.2, 0.2)
     """the surrogate clipping coefficient"""
     clip_vloss: bool = True
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
     # ent_coef: Union[List[float], float] = (0.05, 0.2, 0.0) # Vanilla RL
-    ent_coef: Union[List[float], float] = (0.1, 0.1, 0.1)
+    ent_coef: Union[List[float], float] = (0.1, 0.1)
+    # ent_coef: Union[List[float], float] = (0.1, 0.1, 0.1)
     """coefficient of the entropy"""
     vf_coef: float = 0.5
     """coefficient of the value function"""

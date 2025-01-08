@@ -1,5 +1,6 @@
 import copy
 import random
+import math
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -110,6 +111,55 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.constant_(layer.bias, bias_const)
     return layer
 
+def layer_sparse_init(m):
+    if isinstance(m, nn.Linear):
+        sparse_init(m.weight, sparsity=0.9)
+        m.bias.data.fill_(0.0)
+    else:
+        raise NotImplementedError
+    return m
+
+
+def sparse_init(tensor, sparsity, type='uniform'):
+
+    if tensor.ndimension() == 2:
+        fan_out, fan_in = tensor.shape
+
+        num_zeros = int(math.ceil(sparsity * fan_in))
+
+        with torch.no_grad():
+            if type == 'uniform':
+                tensor.uniform_(-math.sqrt(1.0 / fan_in), math.sqrt(1.0 / fan_in))
+            elif type == 'normal':
+                tensor.normal_(0, math.sqrt(1.0 / fan_in))
+            else:
+                raise ValueError("Unknown initialization type")
+            for col_idx in range(fan_out):
+                row_indices = torch.randperm(fan_in)
+                zero_indices = row_indices[:num_zeros]
+                tensor[col_idx, zero_indices] = 0
+        return tensor
+
+    elif tensor.ndimension() == 4:
+        channels_out, channels_in, h, w = tensor.shape
+        fan_in, fan_out = channels_in*h*w, channels_out*h*w
+
+        num_zeros = int(math.ceil(sparsity * fan_in))
+
+        with torch.no_grad():
+            if type == 'uniform':
+                tensor.uniform_(-math.sqrt(1.0 / fan_in), math.sqrt(1.0 / fan_in))
+            elif type == 'normal':
+                tensor.normal_(0, math.sqrt(1.0 / fan_in))
+            else:
+                raise ValueError("Unknown initialization type")
+            for out_channel_idx in range(channels_out):
+                indices = torch.randperm(fan_in)
+                zero_indices = indices[:num_zeros]
+                tensor[out_channel_idx].reshape(channels_in*h*w)[zero_indices] = 0
+        return tensor
+    else:
+        raise ValueError("Only tensors with 2 or 4 dimensions are supported")
 
 class PPOAgent(nn.Module):
     def __init__(self, envs, hidden_size=6):
@@ -128,16 +178,16 @@ class PPOAgent(nn.Module):
 
         print(observation_space_size, action_space_size)
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(observation_space_size, 64)),
+            layer_sparse_init(nn.Linear(observation_space_size, 64)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
+            layer_sparse_init(nn.Linear(64, 64)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, 1), std=1.0),
+            layer_sparse_init(nn.Linear(64, 1)),
         )
         self.actor = nn.Sequential(
-            layer_init(nn.Linear(observation_space_size, hidden_size)),
+            layer_sparse_init(nn.Linear(observation_space_size, hidden_size)),
             nn.Tanh(),
-            layer_init(nn.Linear(hidden_size, action_space_size), std=0.01),
+            layer_sparse_init(nn.Linear(hidden_size, action_space_size)),
         )
 
         # Option attributes
