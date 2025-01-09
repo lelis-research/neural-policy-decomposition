@@ -26,16 +26,16 @@ from utils.utils import timing_decorator
 class Args:
     exp_id: str = ""
     """the id to be set for the experiment"""
-    exp_name: str = "whole_dec_options_sparse_init"
+    exp_name: str = "whole_dec_options"
     """the name of this experiment"""
     problems: List[str] = ("TL-BR", "TR-BL", "BR-TL", "BL-TR")
     """"""
     env_seeds: Union[List[int], str] = (0,1,2)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
     model_paths: List[str] = (
-        'sparse_initializations_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_sd0',
-        'sparse_initializations_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd1',
-        'sparse_initializations_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd2'
+        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_sd0',
+        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd1',
+        'train_ppo_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd2'
     )
     # model_paths: List[str] = (
     #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd0_TL-BR',
