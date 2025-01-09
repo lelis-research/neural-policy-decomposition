@@ -15,9 +15,9 @@ from typing import Union, List
 import concurrent.futures
 from pipelines.losses import LevinLossActorCritic, LogitsLossActorCritic
 from agents.policy_guided_agent import PPOAgent
-from environemnts.environments_combogrid_gym import ComboGym
-from environemnts.environments_combogrid import SEEDS
-from environemnts.environments_minigrid import get_training_tasks_simplecross
+from environments.environments_combogrid_gym import ComboGym
+from environments.environments_combogrid import SEEDS
+from environments.environments_minigrid import get_training_tasks_simplecross
 from utils.utils import timing_decorator
 from utils.utils import timing_decorator
 

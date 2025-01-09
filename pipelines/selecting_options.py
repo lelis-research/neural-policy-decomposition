@@ -2,7 +2,7 @@ import copy
 import math
 import torch
 from agents.policy_guided_agent import PolicyGuidedAgent
-from environemnts.environments_combogrid import Game
+from environments.environments_combogrid import Game
 from extract_automaton import ExtractAutomaton
 from extract_sub_automata import SubAutomataExtractor
 from models.models_mlp import CustomRNN

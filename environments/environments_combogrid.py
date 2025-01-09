@@ -20,6 +20,8 @@ SEEDS = {
     "BR-ML": 11
 }
 
+PROBLEM_NAMES = list(SEEDS.keys())
+
 class Problem:
     def __init__(self, rows, columns, problem_str):
         self.rows = rows

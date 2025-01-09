@@ -9,9 +9,10 @@ from utils import utils
 from typing import Union, List
 from dataclasses import dataclass
 from torch.utils.tensorboard import SummaryWriter
-from environemnts.environments_combogrid_gym import make_env
-from environemnts.environments_combogrid import SEEDS as COMBOGRID_SEEDS
-from environemnts.environments_minigrid import make_env_simple_crossing, make_env_four_rooms
+from environments.environments_combogrid_gym import make_env
+from environments.environments_combogrid import SEEDS as COMBOGRID_SEEDS
+from environments.environments_combogrid import PROBLEM_NAMES as COMBOGRID_PROBLEMS
+from environments.environments_minigrid import make_env_simple_crossing, make_env_four_rooms
 from training.train_ppo_agent import train_ppo
 
 
@@ -31,9 +32,9 @@ class Args:
     """if toggled, cuda will be enabled by default"""
     torch_deterministic: bool = True
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
-    track: bool = False
+    track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "cleanRL"
+    wandb_project_name: str = "LMNOP"
     """the wandb's project name"""
     wandb_entity: str = None
     """the entity (team) of wandb's project"""
@@ -55,7 +56,7 @@ class Args:
     combogrid_problems: List[str] = ("TL-BR", "TR-BL", "BR-TL", "BL-TR")
     
     # Specific arguments
-    total_timesteps: int = 1_500_000
+    total_timesteps: int = 2000
     """total timesteps for testinging"""
     # learning_rate: Union[List[float], float] = (2.5e-4, 2.5e-4, 2.5e-4, 2.5e-4) # ComboGrid
     # learning_rate: Union[List[float], float] = (0.0005, 0.0005, 5e-05) # Vanilla RL MiniGrid
@@ -114,9 +115,6 @@ class Args:
 
 @utils.timing_decorator
 def main(args: Args):
-    args.batch_size = int(args.num_envs * args.num_steps)
-    args.minibatch_size = int(args.batch_size // args.num_minibatches)
-    args.num_iterations = args.total_timesteps // args.batch_size
     
     run_name = f"{args.exp_id}_training_t{int(time.time())}" 
     run_index = f"train_ppo_t{int(time.time())}" 
@@ -224,6 +222,10 @@ if __name__ == "__main__":
     if args.env_id == "ComboGrid":
         args.env_seeds = [COMBOGRID_SEEDS[problem] for problem in args.combogrid_problems]
 
+    args.batch_size = int(args.num_envs * args.num_steps)
+    args.minibatch_size = int(args.batch_size // args.num_minibatches)
+    args.num_iterations = args.total_timesteps // args.batch_size
+
     # Parameter specification for each problem
     lrs = args.learning_rate
     clip_coef = args.clip_coef
@@ -236,7 +238,7 @@ if __name__ == "__main__":
         args.learning_rate = lrs[i]
         args.exp_id = f'{exp_id}_lr{args.learning_rate}_clip{args.clip_coef}_ent{args.ent_coef}_sd{args.seed}'
         if args.env_id == "ComboGrid":
-            args.problem = args.combogrid_problems[i]
+            args.problem = COMBOGRID_PROBLEMS[i]
             args.exp_id += f'_{args.problem}'
         main(args)
     

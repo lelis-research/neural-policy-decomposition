@@ -6,8 +6,8 @@ from typing import List
 import torch.nn.functional as F
 # from pipelines.test_on_every_cell import Args as EachCellTestArgs
 from agents.policy_guided_agent import PPOAgent
-from environemnts.environments_combogrid_gym import ComboGym
-from environemnts.environments_minigrid import get_training_tasks_simplecross
+from environments.environments_combogrid_gym import ComboGym
+from environments.environments_minigrid import get_training_tasks_simplecross
 
 
 class LevinLossActorCritic:

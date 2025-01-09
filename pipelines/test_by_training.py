@@ -13,7 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 from pipelines.extract_subpolicy_ppo import load_options
 from dataclasses import dataclass
 from training.train_ppo_agent import train_ppo
-from environemnts.environments_minigrid import make_env_four_rooms
+from environments.environments_minigrid import make_env_four_rooms
 
 
 @dataclass

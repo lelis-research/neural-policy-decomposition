@@ -7,8 +7,8 @@ from tqdm import tqdm
 import torch.nn as nn
 from typing import Union
 import matplotlib.pyplot as plt
-from environemnts.environments_combogrid_gym import ComboGym
-from environemnts.environments_minigrid import MiniGridWrap
+from environments.environments_combogrid_gym import ComboGym
+from environments.environments_minigrid import MiniGridWrap
 from gymnasium.vector import SyncVectorEnv
 from torch.distributions.categorical import Categorical
 from models.models_mlp import CustomRNN 

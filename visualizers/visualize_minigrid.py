@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from minigrid.wrappers import RGBImgObsWrapper
 from utils.utils import get_logger
 from agents.trajectory import Trajectory
-from environemnts.environments_minigrid import MiniGridWrap, get_training_tasks_simplecross, get_test_tasks_fourrooms
+from environments.environments_minigrid import MiniGridWrap, get_training_tasks_simplecross, get_test_tasks_fourrooms
 from agents.policy_guided_agent import PPOAgent
 from pipelines.extract_subpolicy_ppo import Args, process_args, regenerate_trajectories
 
