@@ -45,6 +45,8 @@ class Args:
     # )
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
+    track: bool = True
+    """wandb tracking logs and experiment metrics"""
 
     # Algorithm specific arguments
     env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
@@ -77,6 +79,10 @@ class Args:
     # Script arguments
     seed: int = 0
     """The seed used for reproducibilty of the script"""
+    wandb_project_name: str = "LMNOP"
+    """the wandb's project name"""
+    wandb_entity: str = None
+    """the entity (team) of wandb's project"""
     torch_deterministic: bool = True
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     log_path: str = "outputs/logs/"
@@ -98,24 +104,24 @@ def process_args() -> Args:
     if args.exp_id == "":
         args.exp_id = f'{args.exp_name}_{args.env_id}' + \
         f'_gw{args.game_width}_h{args.hidden_size}_l1{args.l1_lambda}' + \
-        f'_r{args.number_restarts}_envsd{",".join(map(str, args.seeds))}'
+        f'_r{args.number_restarts}_envsd{",".join(map(str, args.env_seeds))}'
 
     # updating log path
-    args.log_path = os.path.join(args.log_path, args.exp_id, f"seed={str(args.seed)}")
+    args.log_path = os.path.join(args.log_path, args.exp_id, f"seed={str(args.env_seeds)}")
     
     # Processing seeds from commands
-    if isinstance(args.seeds, list) or isinstance(args.seeds, tuple):
-        args.seeds = list(map(int, args.seeds))
-    elif isinstance(args.seeds, str):
-        start, end = map(int, args.seeds.split(","))
-        args.seeds = list(range(start, end + 1))
+    if isinstance(args.env_seeds, list) or isinstance(args.env_seeds, tuple):
+        args.env_seeds = list(map(int, args.env_seeds))
+    elif isinstance(args.env_seeds, str):
+        start, end = map(int, args.env_seeds.split(","))
+        args.env_seeds = list(range(start, end + 1))
     else:
         raise NotImplementedError
     
     if args.env_id == "ComboGrid":
-        args.seeds = [SEEDS[problem] for problem in args.problems]
+        args.env_seeds = [SEEDS[problem] for problem in args.problems]
     elif args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-        args.problems = [args.env_id + f"_{seed}" for seed in args.seeds]
+        args.problems = [args.env_id + f"_{seed}" for seed in args.env_seeds]
         
     return args
 
@@ -712,7 +718,7 @@ def hill_climbing_all_segments():
             loss_value = levin_loss.compute_loss(masks=selected_masks + [mask], 
                                            agents=selected_mask_models + [agent], 
                                            problem_str=problem, 
-                                           trajectories=trajectories, 
+                                           trajectories=trajectories,
                                            number_actions=number_actions, 
                                            number_steps=selected_option_sizes + [option_size])
 
@@ -782,7 +788,24 @@ def whole_dec_options_training_data_levin_loss():
     trajectories = regenerate_trajectories(args, verbose=True, logger=logger)
     max_length = max([len(t.get_trajectory()) for t in trajectories.values()])
     option_length = list(range(2, max_length + 1))
-    args.exp_id += f'_olen{",".join(map(str, option_length))}'
+    # args.exp_id += f'_olen{",".join(map(str, option_length))}'
+
+    run_name=f"{args.exp_id}_sd{args.seed}"
+
+    if args.track:
+        import wandb
+
+        wandb.init(
+            project=args.wandb_project_name,
+            group=args.exp_id,
+            job_type="eval",
+            entity=args.wandb_entity,
+            sync_tensorboard=True,
+            config=vars(args),
+            name=run_name,
+            monitor_gym=True,
+            save_code=True,
+        )
 
     params = {
         'Environment': args.env_id,

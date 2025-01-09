@@ -18,7 +18,7 @@ from environments.environments_minigrid import make_env_four_rooms
 
 @dataclass
 class Args:
-    exp_id: str = "sparse_initialization_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_r400_sd0,1,2_olen2,3,4,5,6,7,8,9,10,11,12,13,14,15"
+    exp_id: str = "whole_dec_options_sparse_init_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_r400_envsd0,1,2"
     """The ID of the finished experiment"""
     env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
     """the id of the environment corresponding to the trained agent
@@ -45,21 +45,20 @@ class Args:
     # Testing specific arguments
     test_exp_id: str = ""
     """The ID of the new experiment"""
-    test_exp_name: str = "sparse_initialization"
+    test_exp_name: str = "whole_dec_options_sparse_init"
     """the name of this experiment"""
     test_env_id: str = "MiniGrid-FourRooms-v0"
     """the id of the environment for testing
     choices from [ComboGrid, MiniGrid-FourRooms-v0]"""
     test_problems: List[str] = tuple()
     """"""
-    # test_seeds: Union[List[int], str] = (41,51,8)
-    test_seeds: Union[List[int], str] = (51,8)
+    test_seeds: Union[List[int], str] = (41,51,8)
     """the seeds of the environment for testing"""
     total_timesteps: int = 1_500_000
     """total timesteps for testing"""
     # learning_rate: Union[List[float], float] = (0.0005, 0.0005, 5e-05) # Vanilla RL
-    learning_rate: Union[List[float], float] = (0.001, 0.001)
     # learning_rate: Union[List[float], float] = (0.0005, 0.001, 0.001)
+    learning_rate: Union[List[float], float] = (0.0005, 0.0005, 0.0005) # Whole Dec-Option
     """the learning rate of the optimize for testing"""
     num_envs: int = 4
     """the number of parallel game environments for testing"""
@@ -78,13 +77,13 @@ class Args:
     norm_adv: bool = True
     """Toggles advantages normalization for testing"""
     # clip_coef: Union[List[float], float] = (0.15, 0.1, 0.2) # Vanilla RL
-    clip_coef: Union[List[float], float] = (0.2, 0.2)
     # clip_coef: Union[List[float], float] = (0.25, 0.2, 0.2)
+    clip_coef: Union[List[float], float] = (0.3, 0.25, 0.15) # Whole Dec-Option
     """the surrogate clipping coefficient"""
     clip_vloss: bool = True
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
     # ent_coef: Union[List[float], float] = (0.05, 0.2, 0.0) # Vanilla RL
-    ent_coef: Union[List[float], float] = (0.1, 0.1)
+    ent_coef: Union[List[float], float] = (0.15, 0.05, 0.05) # Whole Dec-Option
     # ent_coef: Union[List[float], float] = (0.1, 0.1, 0.1)
     """coefficient of the entropy"""
     vf_coef: float = 0.5
@@ -105,6 +104,12 @@ class Args:
     # script arguments
     seed: int = 0
     """run seed"""
+    track: bool = True
+    """if toggled, this experiment will be tracked with Weights and Biases"""
+    wandb_project_name: str = "LMNOP"
+    """the wandb's project name"""
+    wandb_entity: str = None
+    """the entity (team) of wandb's project"""
     torch_deterministic: bool = True
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     log_path: str = "outputs/logs/"
@@ -117,11 +122,27 @@ def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, seed: int,
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # TRY NOT TO MODIFY: seeding
-    seed = args.seed
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
+
+    run_name = f"{test_exp_id}_sd{seed}"
+
+    if args.track:
+        import wandb
+
+        wandb.init(
+            project=args.wandb_project_name,
+            group=test_exp_id,
+            job_type="eval",
+            entity=args.wandb_entity,
+            sync_tensorboard=True,
+            config=vars(args),
+            name=run_name,
+            monitor_gym=True,
+            save_code=True,
+        )
     
     if args.test_env_id == "MiniGrid-FourRooms-v0":
         envs = gym.vector.SyncVectorEnv(
@@ -179,7 +200,7 @@ def main(args: Args):
         args.learning_rate = lrs[i]
         args.clip_coef = clip_coef[i]
         args.ent_coef = ent_coef[i]
-        test_exp_id = f'{args.test_exp_id}_lr{args.learning_rate}_clip{args.clip_coef}_ent{args.ent_coef}_sd{seed}'
+        test_exp_id = f'{args.test_exp_id}_lr{args.learning_rate}_clip{args.clip_coef}_ent{args.ent_coef}'
         train_ppo_with_options(options, test_exp_id, seed, args, logger)
         utils.logger_flush(logger)
 

@@ -14,6 +14,6 @@ source envs/venv/bin/activate # Assuming we have all our environments in  `../en
 wandb offline
 
 OMP_NUM_THREADS=1 python -m pipelines.train_ppo \
---exp_name=no_options --cpus=$SLURM_CPUS_PER_TASK --seed=$SLURM_ARRAY_TASK_ID
+--exp_name=test_wandb --cpus=$SLURM_CPUS_PER_TASK --seed=$SLURM_ARRAY_TASK_ID
 
 # wandb sync --include-offline --sync-all

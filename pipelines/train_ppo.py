@@ -35,7 +35,7 @@ class Args:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "LMNOP"
+    wandb_project_name: str = "DEBUG"
     """the wandb's project name"""
     wandb_entity: str = None
     """the entity (team) of wandb's project"""
@@ -57,7 +57,7 @@ class Args:
     combogrid_problems: List[str] = ("TL-BR", "TR-BL", "BR-TL", "BL-TR")
     
     # Specific arguments
-    total_timesteps: int = 1_500_000
+    total_timesteps: int = 1000
     """total timesteps for testinging"""
     # learning_rate: Union[List[float], float] = (2.5e-4, 2.5e-4, 2.5e-4, 2.5e-4) # ComboGrid
     learning_rate: Union[List[float], float] = (0.0005, 0.0005, 5e-05) # Vanilla RL MiniGrid
@@ -134,8 +134,8 @@ def main(args: Args):
 
         wandb.init(
             project=args.wandb_project_name,
-            # group=args.exp_id,
-            group="experiment_1", job_type="eval",
+            group=args.exp_id,
+            job_type="eval",
             entity=args.wandb_entity,
             sync_tensorboard=True,
             config=vars(args),
