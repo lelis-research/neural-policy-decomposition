@@ -26,11 +26,11 @@ from utils.utils import timing_decorator
 class Args:
     exp_id: str = ""
     """the id to be set for the experiment"""
-    exp_name: str = "sparse_initializations"
+    exp_name: str = "whole_dec_options_sparse_init"
     """the name of this experiment"""
     problems: List[str] = ("TL-BR", "TR-BL", "BR-TL", "BL-TR")
     """"""
-    seeds: Union[List[int], str] = (0,1,2)
+    env_seeds: Union[List[int], str] = (0,1,2)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
     model_paths: List[str] = (
         'sparse_initializations_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_sd0',
@@ -89,17 +89,16 @@ def process_args() -> Args:
     args = tyro.cli(Args)
 
     # TRY NOT TO MODIFY: seeding
-    seed = args.seed
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
     # setting the experiment id
     if args.exp_id == "":
         args.exp_id = f'{args.exp_name}_{args.env_id}' + \
         f'_gw{args.game_width}_h{args.hidden_size}_l1{args.l1_lambda}' + \
-        f'_r{args.number_restarts}_sd{",".join(map(str, args.seeds))}'
+        f'_r{args.number_restarts}_envsd{",".join(map(str, args.seeds))}'
 
     # updating log path
     args.log_path = os.path.join(args.log_path, args.exp_id, f"seed={str(args.seed)}")
@@ -130,7 +129,7 @@ def regenerate_trajectories(args: Args, verbose=False, logger=None):
     
     trajectories = {}
     
-    for seed, problem, model_directory in zip(args.seeds, args.problems, args.model_paths):
+    for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
 
         model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
         if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
@@ -533,7 +532,7 @@ def hill_climbing_mask_space_training_data():
         best_loss = None
         best_mask_model = None
 
-        for seed, problem, model_directory in zip(args.seeds, args.problems, args.model_paths):
+        for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
             model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
             logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
             if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
@@ -648,7 +647,7 @@ def hill_climbing_all_segments():
 
     all_masks_info = []
 
-    for seed, problem, model_directory in zip(args.seeds, args.problems, args.model_paths):
+    for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
         model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
         logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
         if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
@@ -786,6 +785,9 @@ def whole_dec_options_training_data_levin_loss():
     args.exp_id += f'_olen{",".join(map(str, option_length))}'
 
     params = {
+        'Environment': args.env_id,
+        'env_seeds': args.env_seeds,
+        'seed': args.seed,
         'hidden_size': args.hidden_size,
         'option_length': option_length,
         'game_width': game_width,
@@ -818,7 +820,7 @@ def whole_dec_options_training_data_levin_loss():
         best_loss = None
         best_mask_model = None
 
-        for seed, problem, model_directory in zip(args.seeds, args.problems, args.model_paths):
+        for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
             model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
             logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
             if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
@@ -990,7 +992,7 @@ def learn_options():
 
     all_masks_info = []
 
-    for seed, problem, model_directory in zip(args.seeds, args.problems, args.model_paths):
+    for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
         model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
         logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
         if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
@@ -1115,9 +1117,9 @@ def learn_options():
 
 def main():
     # hill_climbing_mask_space_training_data()
-    # whole_dec_options_training_data_levin_loss()
+    whole_dec_options_training_data_levin_loss()
     # hill_climbing_all_segments()
-    learn_options()
+    # learn_options()
 
 
 if __name__ == "__main__":

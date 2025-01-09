@@ -2,6 +2,7 @@
 import time
 import os
 import torch
+import wandb
 import gymnasium as gym
 import numpy as np
 import torch.nn as nn
@@ -14,7 +15,7 @@ def train_ppo(envs: gym.vector.SyncVectorEnv, seed, args, model_file_name, devic
     hidden_size = args.hidden_size
     l1_lambda = args.l1_lambda
     if not seed:
-        seed = args.seed
+        seed = args.env_seed
 
     agent = PPOAgent(envs, hidden_size=hidden_size).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
@@ -168,6 +169,7 @@ def train_ppo(envs: gym.vector.SyncVectorEnv, seed, args, model_file_name, devic
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
         
         if iteration % 1000 == 0:
+            logger.info(f"Global steps: {global_step}")
             utils.logger_flush(logger)
 
     envs.close()
