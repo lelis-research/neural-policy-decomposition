@@ -162,7 +162,7 @@ def sparse_init(tensor, sparsity, type='uniform'):
         raise ValueError("Only tensors with 2 or 4 dimensions are supported")
 
 class PPOAgent(nn.Module):
-    def __init__(self, envs, hidden_size=6):
+    def __init__(self, envs, hidden_size=6, sparse_init=False):
         super().__init__()
         if isinstance(envs, ComboGym):
             observation_space_size = envs.get_observation_space()
@@ -176,19 +176,33 @@ class PPOAgent(nn.Module):
         else:
             raise NotImplementedError
 
-        print(observation_space_size, action_space_size)
-        self.critic = nn.Sequential(
-            layer_sparse_init(nn.Linear(observation_space_size, 64)),
-            nn.Tanh(),
-            layer_sparse_init(nn.Linear(64, 64)),
-            nn.Tanh(),
-            layer_sparse_init(nn.Linear(64, 1)),
-        )
-        self.actor = nn.Sequential(
-            layer_sparse_init(nn.Linear(observation_space_size, hidden_size)),
-            nn.Tanh(),
-            layer_sparse_init(nn.Linear(hidden_size, action_space_size)),
-        )
+        print(f"Sparse initialization: {sparse_init}")
+        if sparse_init:
+            self.critic = nn.Sequential(
+                layer_sparse_init(nn.Linear(observation_space_size, 64)),
+                nn.Tanh(),
+                layer_sparse_init(nn.Linear(64, 64)),
+                nn.Tanh(),
+                layer_sparse_init(nn.Linear(64, 1)),
+            )
+            self.actor = nn.Sequential(
+                layer_sparse_init(nn.Linear(observation_space_size, hidden_size)),
+                nn.Tanh(),
+                layer_sparse_init(nn.Linear(hidden_size, action_space_size)),
+            )
+        else:
+            self.critic = nn.Sequential(
+                layer_init(nn.Linear(observation_space_size, 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 64)),
+                nn.Tanh(),
+                layer_init(nn.Linear(64, 1)),
+            )
+            self.actor = nn.Sequential(
+                layer_init(nn.Linear(observation_space_size, hidden_size)),
+                nn.Tanh(),
+                layer_init(nn.Linear(hidden_size, action_space_size)),
+            )
 
         # Option attributes
         self.mask = None
@@ -211,7 +225,7 @@ class PPOAgent(nn.Module):
         self.option_size = option_size
         self.problem_id = problem
 
-    def _masked_neuron_operation(self, logits, mask):
+    def _masked_neuron_operation(self, logits, mask, discrete_masks=True):
         """
         Apply a mask to neuron outputs in a layer.
 
@@ -228,15 +242,17 @@ class PPOAgent(nn.Module):
         if mask is None or len(mask) == 0:
             raise Exception("No mask is set for the agent.")
         relu_out = torch.relu(logits)
-        output = torch.zeros_like(logits)
         
-        alpha = 10
-        mask_neg_one = torch.sigmoid(-alpha * (mask + 1))  # close to 1 when mask <= -1
-        mask_pos_one = torch.sigmoid(alpha * (mask - 1))   # close to 1 when mask >= 1
-        mask_between = 1 - mask_neg_one - mask_pos_one     # smooth transition for values in between
+        if discrete_masks:            
+            output = mask * (mask - 1) / 2 * relu_out + mask * (mask + 1) * logits / 2
+        else:
+            alpha = 10
+            mask_neg_one = torch.sigmoid(-alpha * (mask + 1))  # close to 1 when mask <= -1
+            mask_pos_one = torch.sigmoid(alpha * (mask - 1))   # close to 1 when mask >= 1
+            mask_between = 1 - mask_neg_one - mask_pos_one     # smooth transition for values in between
 
-        # Create output based on differentiable masks
-        output = mask_neg_one * relu_out + mask_pos_one * logits + mask_between * 0
+            # Create output based on differentiable masks
+            output = mask_neg_one * relu_out + mask_pos_one * logits + mask_between * 0
         return output
 
     def _masked_forward(self, x, mask=None):

@@ -20,7 +20,7 @@ from training.train_ppo_agent import train_ppo
 class Args:
     exp_id: str = ""
     """The ID of the finished experiment; to be filled in run time"""
-    exp_name: str = "train_ppo_agent"
+    exp_name: str = "test_noOptions"
     """the name of this experiment"""
     env_id: str = "MiniGrid-FourRooms-v0"
     """the id of the environment corresponding to the trained agent
@@ -35,7 +35,7 @@ class Args:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "DEBUG"
+    wandb_project_name: str = "LMNOP"
     """the wandb's project name"""
     wandb_entity: str = None
     """the entity (team) of wandb's project"""
@@ -57,11 +57,11 @@ class Args:
     combogrid_problems: List[str] = ("TL-BR", "TR-BL", "BR-TL", "BL-TR")
     
     # Specific arguments
-    total_timesteps: int = 1000
+    total_timesteps: int = 1_500_000
     """total timesteps for testinging"""
     # learning_rate: Union[List[float], float] = (2.5e-4, 2.5e-4, 2.5e-4, 2.5e-4) # ComboGrid
-    learning_rate: Union[List[float], float] = (0.0005, 0.0005, 5e-05) # Vanilla RL MiniGrid
-    # learning_rate: Union[List[float], float] = (0.0005, 0.001, 0.001)
+    learning_rate: Union[List[float], float] = (0.0005, 0.0005, 5e-05) # Vanilla RL FourRooms
+    # learning_rate: Union[List[float], float] = (0.0005, 0.001, 0.001) # SimpleCrossing
     """the learning rate of the optimize for testinging"""
     num_envs: int = 4
     """the number of parallel game environments for testinging"""
@@ -80,14 +80,14 @@ class Args:
     norm_adv: bool = True
     """Toggles advantages normalization for testinging"""
     # clip_coef: Union[List[float], float] = (0.2, 0.2, 0.2, 0.2) # ComboGrid
-    clip_coef: Union[List[float], float] = (0.15, 0.1, 0.2) # Vanilla RL
-    # clip_coef: Union[List[float], float] = (0.25, 0.2, 0.2) 
+    clip_coef: Union[List[float], float] = (0.15, 0.1, 0.2) # Vanilla RL FourRooms
+    # clip_coef: Union[List[float], float] = (0.25, 0.2, 0.2) # SimpleCrossing
     """the surrogate clipping coefficient"""
     clip_vloss: bool = True
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
     # ent_coef: Union[List[float], float] = (0.01, 0.01, 0.01, .01) # ComboGrid
-    ent_coef: Union[List[float], float] = (0.05, 0.2, 0.0) # Vanilla RL
-    # ent_coef: Union[List[float], float] = (0.1, 0.1, 0.1)
+    ent_coef: Union[List[float], float] = (0.05, 0.2, 0.0) # Vanilla RL FourRooms
+    # ent_coef: Union[List[float], float] = (0.1, 0.1, 0.1) # SimpleCrossing
     """coefficient of the entropy"""
     vf_coef: float = 0.5
     """coefficient of the value function"""
@@ -122,7 +122,7 @@ def main(args: Args):
     run_name = f"{args.exp_id}_sd{args.seed}_training_t{int(time.time())}" 
     run_index = f"train_ppo_t{int(time.time())}" 
     
-    log_path = os.path.join(args.log_path, args.exp_id, "train_ppo")
+    log_path = os.path.join(args.log_path, args.exp_id, f"seed={args.seed}", "train_ppo")
     suffix = f"/training_ppo"
 
     logger = utils.get_logger('ppo_trainer_logger_' + str(args.env_seed) + "_" + args.exp_name, args.log_level, log_path, suffix=suffix)
@@ -145,7 +145,8 @@ def main(args: Args):
         )
     
     # Setting up tensorboard summary writer
-    writer = SummaryWriter(f"outputs/tensorboard/runs/{args.exp_id}/{run_index}")
+    writer_path = f"{args.exp_id}/seed={args.seed}/{run_index}"
+    writer = SummaryWriter(f"outputs/tensorboard/runs/{writer_path}")
     writer.add_text(
         "hyperparameters",
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
@@ -196,7 +197,7 @@ def main(args: Args):
     else:
         raise NotImplementedError
     
-    model_path = f'binary/models/{args.exp_id}/ppo_first_MODEL.pt'
+    model_path = f'binary/models/{args.exp_id}/seed={args.seed}/ppo_first_MODEL.pt'
 
     train_ppo(envs=envs, 
               seed=args.env_seed, 
@@ -204,7 +205,8 @@ def main(args: Args):
               model_file_name=model_path, 
               device=device, 
               logger=logger, 
-              writer=writer)
+              writer=writer, 
+              sparse_init=False)
 
 
 if __name__ == "__main__":

@@ -11,13 +11,13 @@ from utils import utils
 from agents.policy_guided_agent import PPOAgent
 
 
-def train_ppo(envs: gym.vector.SyncVectorEnv, seed, args, model_file_name, device, logger=None, writer=None):
+def train_ppo(envs: gym.vector.SyncVectorEnv, seed, args, model_file_name, device, logger=None, writer=None, sparse_init=False):
     hidden_size = args.hidden_size
     l1_lambda = args.l1_lambda
     if not seed:
         seed = args.env_seed
-
-    agent = PPOAgent(envs, hidden_size=hidden_size).to(device)
+    
+    agent = PPOAgent(envs, hidden_size=hidden_size, sparse_init=sparse_init).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
     # ALGO Logic: Storage setup
@@ -63,10 +63,10 @@ def train_ppo(envs: gym.vector.SyncVectorEnv, seed, args, model_file_name, devic
 
             if "final_info" in infos:
                 for info in infos["final_info"]:
-                    if info and "epixsode" in info:
+                    if info and "episode" in info:
                         logger.info(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-                        writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-                        writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+                        writer.add_scalar("Charts/episodic_return", info["episode"]["r"], global_step)
+                        writer.add_scalar("Charts/episodic_length", info["episode"]["l"], global_step)
 
         # bootstrap value if not done
         with torch.no_grad():
@@ -156,7 +156,7 @@ def train_ppo(envs: gym.vector.SyncVectorEnv, seed, args, model_file_name, devic
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
 
         # TRY NOT TO MODIFY: record rewards for plotting purposes
-        writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
+        writer.add_scalar("Charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
         writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
         writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
         writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
@@ -166,7 +166,7 @@ def train_ppo(envs: gym.vector.SyncVectorEnv, seed, args, model_file_name, devic
         writer.add_scalar("losses/l1_reg", l1_reg.item(), global_step)
         writer.add_scalar("losses/explained_variance", explained_var, global_step)
         logger.info(f"SPS: {int(global_step / (time.time() - start_time))}")
-        writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+        writer.add_scalar("Charts/SPS", int(global_step / (time.time() - start_time)), global_step)
         
         if iteration % 1000 == 0:
             logger.info(f"Global steps: {global_step}")

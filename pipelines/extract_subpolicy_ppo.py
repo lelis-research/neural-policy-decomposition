@@ -26,17 +26,24 @@ from utils.utils import timing_decorator
 class Args:
     exp_id: str = ""
     """the id to be set for the experiment"""
-    exp_name: str = "whole_dec_options_sparse_init"
+    # exp_name: str = "extract_decOptionWhole_randomInit"
+    # exp_name: str = "extract_decOptionWhole_sparseInit"
+    exp_name: str = "extract_learnOptions_randomInit_discreteMasks"
     """the name of this experiment"""
     problems: List[str] = ("TL-BR", "TR-BL", "BR-TL", "BL-TR")
     """"""
     env_seeds: Union[List[int], str] = (0,1,2)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
     model_paths: List[str] = (
-        'sparse_initializations_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_sd0',
-        'sparse_initializations_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd1',
-        'sparse_initializations_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_sd2'
+        'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_envsd0',
+        'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd1',
+        'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd2'
     )
+    # model_paths: List[str] = (
+    #     'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_envsd0',
+    #     'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd1',
+    #     'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd2',
+    #     )
     # model_paths: List[str] = (
     #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd0_TL-BR',
     #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd1_TR-BL',
@@ -45,8 +52,6 @@ class Args:
     # )
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
-    track: bool = True
-    """wandb tracking logs and experiment metrics"""
 
     # Algorithm specific arguments
     env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
@@ -79,12 +84,14 @@ class Args:
     # Script arguments
     seed: int = 0
     """The seed used for reproducibilty of the script"""
+    torch_deterministic: bool = True
+    """if toggled, `torch.backends.cudnn.deterministic=False`"""
+    track: bool = False
+    """if toggled, this experiment will be tracked with Weights and Biases"""
     wandb_project_name: str = "LMNOP"
     """the wandb's project name"""
     wandb_entity: str = None
     """the entity (team) of wandb's project"""
-    torch_deterministic: bool = True
-    """if toggled, `torch.backends.cudnn.deterministic=False`"""
     log_path: str = "outputs/logs/"
     """The name of the log file"""
     log_level: str = "INFO"
@@ -107,7 +114,7 @@ def process_args() -> Args:
         f'_r{args.number_restarts}_envsd{",".join(map(str, args.env_seeds))}'
 
     # updating log path
-    args.log_path = os.path.join(args.log_path, args.exp_id, f"seed={str(args.env_seeds)}")
+    args.log_path = os.path.join(args.log_path, args.exp_id, f"seed={str(args.seed)}")
     
     # Processing seeds from commands
     if isinstance(args.env_seeds, list) or isinstance(args.env_seeds, tuple):
@@ -136,8 +143,7 @@ def regenerate_trajectories(args: Args, verbose=False, logger=None):
     trajectories = {}
     
     for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
-
-        model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
+        model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
         if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
             env = get_training_tasks_simplecross(view_size=args.game_width, seed=seed)
         elif args.env_id == "MiniGrid-FourRooms-v0":
@@ -154,6 +160,9 @@ def regenerate_trajectories(args: Args, verbose=False, logger=None):
 
         trajectory = agent.run(env, verbose=verbose)
         trajectories[problem] = trajectory
+
+        if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
+            assert trajectories[problem].get_length() < 16, f"model not optimized! {(seed, problem, model_directory)}"
 
         if verbose:
             logger.info(f"The trajectory length: {len(trajectory.get_state_sequence())}")
@@ -539,7 +548,7 @@ def hill_climbing_mask_space_training_data():
         best_mask_model = None
 
         for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
-            model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
+            model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
             logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
             if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
                 env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
@@ -654,7 +663,7 @@ def hill_climbing_all_segments():
     all_masks_info = []
 
     for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
-        model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
+        model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
         logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
         if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
             env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
@@ -703,7 +712,7 @@ def hill_climbing_all_segments():
         best_mask_model = None
 
         for mask, problem, option_size, model_path, segment in all_masks_info:
-            model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
+            model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
             logger.info(f'Extracting from the agent trained on problem={problem}, seed={seed}, segment=({segment},{segment+option_size})')
             if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
                 env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
@@ -718,7 +727,7 @@ def hill_climbing_all_segments():
             loss_value = levin_loss.compute_loss(masks=selected_masks + [mask], 
                                            agents=selected_mask_models + [agent], 
                                            problem_str=problem, 
-                                           trajectories=trajectories,
+                                           trajectories=trajectories, 
                                            number_actions=number_actions, 
                                            number_steps=selected_option_sizes + [option_size])
 
@@ -781,6 +790,8 @@ def whole_dec_options_training_data_levin_loss():
     
     # Logger configurations
     logger = utils.get_logger('whole_dec_options', args.log_level, args.log_path, suffix="option_extraction")
+    logger.info("Extract Dec-Option Whole ... ")
+    
 
     game_width = args.game_width
     number_actions = 3
@@ -789,9 +800,8 @@ def whole_dec_options_training_data_levin_loss():
     max_length = max([len(t.get_trajectory()) for t in trajectories.values()])
     option_length = list(range(2, max_length + 1))
     # args.exp_id += f'_olen{",".join(map(str, option_length))}'
-
-    run_name=f"{args.exp_id}_sd{args.seed}"
-
+    
+    run_name = f'{args.exp_id}_sd{args.seed}'
     if args.track:
         import wandb
 
@@ -821,10 +831,9 @@ def whole_dec_options_training_data_levin_loss():
     }
 
     buffer = "Parameters:\n"
-    for key, value in params.items():
+    for key, value in vars(args).items():
         buffer += (f"{key}: {value}\n")
     logger.info(buffer)
-
     utils.logger_flush(logger)
 
     previous_loss = None
@@ -844,7 +853,7 @@ def whole_dec_options_training_data_levin_loss():
         best_mask_model = None
 
         for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
-            model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
+            model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
             logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
             if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
                 env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
@@ -911,21 +920,35 @@ def whole_dec_options_training_data_levin_loss():
     utils.logger_flush(logger)
 
     # logger.info("Testing on each grid cell")
-    # for seed, problem in zip(args.seeds, args.problems):
+    # for seed, problem in zip(args.env_seeds, args.problems):
     #     logger.info(f"Testing on each cell..., {problem}")
     #     loss.evaluate_on_each_cell(selected_mask_models, problem, args=args, seed=seed, logger=logger)
 
     # utils.logger_flush(logger)
 
 
-def learn_mask(agent: PPOAgent, trajectories: dict, args: Args):
+class STEQuantize(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x):
+        # Define the quantization levels
+        quantization_levels = torch.tensor([-1, 0, 1])
+        distances = torch.abs(x.unsqueeze(1) - quantization_levels)
+        quantized_indices = torch.argmin(distances, dim=1)
+        return quantization_levels[quantized_indices]
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output
+
+
+def learn_mask(agent: PPOAgent, trajectories: dict, args: Args, discrete_masks=True, logger=None):
     # Initialize the masks as trainable parameters with random values
     mask = torch.nn.Parameter(torch.randn(args.hidden_size), requires_grad=True)
     optimizer = torch.optim.Adam([mask], lr=args.mask_learning_rate)
 
     initial_mask = torch.t_copy(mask)
 
-    print(initial_mask)
+    init_loss = None
 
     steps = 0
     # with tqdm(total=args.mask_learning_steps, desc="Mask Learning Steps") as pbar:
@@ -941,15 +964,25 @@ def learn_mask(agent: PPOAgent, trajectories: dict, args: Args):
 
             # Apply transformations with requires_grad
 
-            mask_transformed = 1.5 * torch.tanh(mask) + 0.5 * torch.tanh(-3 * mask)
-
-            mask_transformed = mask_transformed.clamp(-0.5, 0.5) * 2
+            if discrete_masks:
+                mask_transformed = STEQuantize.apply(mask)
+            else:
+                mask_transformed = 1.5 * torch.tanh(mask) + 0.5 * torch.tanh(-3 * mask)
+                mask_transformed = mask_transformed.clamp(-0.5, 0.5) * 2
 
             new_trajectory = agent.run_with_mask(envs, mask_transformed, trajectory.get_length())
 
             # Compute the mask loss
-            losses = [F.mse_loss(out, tgt) for out, tgt in zip(new_trajectory.logits, trajectory.logits)]
-            mask_loss = torch.mean(torch.stack(losses))
+            # cross_entropy_loss = torch.nn.CrossEntropyLoss()
+            
+            input_probs = torch.nn.functional.log_softmax(torch.stack(new_trajectory.logits), dim=0)
+            target_probs = torch.nn.functional.softmax(torch.stack(trajectory.logits) , dim=0)
+            loss_fn = torch.nn.KLDivLoss(reduction='batchmean')
+            mask_loss = loss_fn(input_probs, target_probs)
+            if not init_loss:
+                init_loss = mask_loss.item()
+
+            # logger.info(f"loss={mask_loss.item()}, {torch.stack(new_trajectory.logits).shape}, {torch.stack(trajectory.logits).shape}")
 
             # Backward pass and optimization
             optimizer.zero_grad()
@@ -964,14 +997,15 @@ def learn_mask(agent: PPOAgent, trajectories: dict, args: Args):
 
     mask_transformed = 1.5 * torch.tanh(mask) + 0.5 * torch.tanh(-3 * mask)
     mask_transformed = mask_transformed.clamp(-0.5, 0.5) * 2
-    return mask_transformed.detach().data
+    return mask_transformed.detach().data, init_loss, mask_loss.item()
 
 
-def learn_mask_iter(trajectories, problem, s, length, agent, args, model_path):
+def learn_mask_iter(trajectories, problem, s, length, agent, args, model_path, logger):
     sub_trajectory = {problem: trajectories[problem].slice(s, n=length)}
     # learn option with this length using gumbel softmax
-    mask = learn_mask(agent, sub_trajectory, args)
-    return (mask, problem, length, model_path, s)
+    mask, init_loss, final_loss = learn_mask(agent, sub_trajectory, args, logger=logger)
+    return (mask, problem, length, model_path, s), init_loss, final_loss
+
 
 @timing_decorator
 def learn_options():
@@ -983,41 +1017,46 @@ def learn_options():
     
     # Logger configurations
     logger = utils.get_logger('learn_options', args.log_level, args.log_path, suffix="learn_option")
+    logger.info("Learning Options ... ")
 
     game_width = args.game_width
     number_actions = 3
 
     trajectories = regenerate_trajectories(args, verbose=True, logger=logger)
     max_length = max([len(t.get_trajectory()) for t in trajectories.values()])
-    option_length = list(range(2, max_length + 1))
-    args.exp_id += f'_olen{",".join(map(str, option_length))}'
+    # option_length = list(range(2, max_length + 1))
+    # args.exp_id += f'_olen{",".join(map(str, option_length))}'
 
-    # logging the experiment parameters
-    params = {
-        'hidden_size': args.hidden_size,
-        'option_length': option_length,
-        'game_width': game_width,
-        'number_restarts': args.number_restarts,
-        'number_actions': number_actions,
-        'l1_lambda': args.l1_lambda,
-        'problems': args.problems
-    }
+    run_name = f'{args.exp_id}_sd{args.seed}'
+    if args.track:
+        import wandb
+
+        wandb.init(
+            project=args.wandb_project_name,
+            group=args.exp_id,
+            job_type="eval",
+            entity=args.wandb_entity,
+            sync_tensorboard=True,
+            config=vars(args),
+            name=run_name,
+            monitor_gym=True,
+            save_code=True,
+        )
 
     buffer = "Parameters:\n"
-    for key, value in params.items():
+    for key, value in vars(args).items():
         buffer += (f"{key}: {value}\n")
     logger.info(buffer)
     utils.logger_flush(logger)
 
 
-    logits_loss = LogitsLossActorCritic(logger)
     levin_loss = LevinLossActorCritic(logger)
 
     all_masks_info = []
 
     for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
-        model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
-        logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
+        model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
+        logger.info(f'Extracting from the agent trained on {problem}, env_seed={seed}')
         if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
             env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
         elif args.env_id == "ComboGrid":
@@ -1030,6 +1069,15 @@ def learn_options():
 
         t_length = trajectories[problem].get_length()
 
+        
+        # for length in range(2, t_length + 1):
+        #     for s in range(t_length - length):
+        #         sub_trajectory = {problem: trajectories[problem].slice(s, n=length)}
+        #         # learn option with this length using gumbel softmax
+        #         mask, init_loss, final_loss = learn_mask(agent, sub_trajectory, args, logger=logger)
+        #         all_masks_info.append((mask, problem, length, model_path, s))
+        #         logger.info(f'Progress: segment:{s} of length{length} done. init_loss={init_loss}, final_loss={final_loss}')
+
         with concurrent.futures.ProcessPoolExecutor(max_workers=args.cpus) as executor:
             # Submit tasks to the executor with all required arguments
             futures = []
@@ -1037,7 +1085,7 @@ def learn_options():
                 for s in range(t_length - length):
                     future = executor.submit(
                         learn_mask_iter, trajectories, problem, s, length, agent, 
-                        args, model_path 
+                        args, model_path, logger
                     )
                     future.s = s,
                     future.length = length
@@ -1046,9 +1094,9 @@ def learn_options():
             # Process the results as they complete
             for future in concurrent.futures.as_completed(futures):
                 try:
-                    mask, problem, length, model_path, s = future.result()
+                    (mask, problem, length, model_path, s), init_loss, final_loss = future.result()
                     all_masks_info.append((mask, problem, length, model_path, s))
-                    logger.info(f'Progress: segment:{s} of length{length} done.')
+                    logger.info(f'Progress: segment:{s} of length{length} done. init_loss={init_loss}, final_loss={final_loss}')
                 except Exception as exc:
                     logger.error(f'Segment:{future.s} of length{future.length}generated an exception: {exc}')
         utils.logger_flush(logger)
@@ -1070,8 +1118,8 @@ def learn_options():
         best_mask_model = None
 
         for mask, problem, option_size, model_path, segment in all_masks_info:
-            model_path = f'binary/models/{model_directory}/ppo_first_MODEL.pt'
-            logger.info(f'Extracting from the agent trained on problem={problem}, seed={seed}, segment=({segment},{segment+option_size})')
+            model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
+            logger.info(f'Evaluating the option from problem={problem}, env_seed={seed}, segment=({segment},{segment+option_size})')
             
             if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
                 env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
@@ -1140,9 +1188,9 @@ def learn_options():
 
 def main():
     # hill_climbing_mask_space_training_data()
-    whole_dec_options_training_data_levin_loss()
+    # whole_dec_options_training_data_levin_loss()
     # hill_climbing_all_segments()
-    # learn_options()
+    learn_options()
 
 
 if __name__ == "__main__":
