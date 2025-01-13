@@ -18,7 +18,7 @@ from environments.environments_minigrid import make_env_four_rooms
 
 @dataclass
 class Args:
-    exp_id: str = "whole_dec_options_sparse_init_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_r400_envsd0,1,2"
+    exp_id: str = "extract_learnOptions_randomInit_discreteMasks_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_r400_envsd0,1,2"
     """The ID of the finished experiment"""
     env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
     """the id of the environment corresponding to the trained agent
@@ -41,11 +41,12 @@ class Args:
     l1_lambda: float = 0
     """"""
     number_actions: int = 3
+    """"""
     
     # Testing specific arguments
     test_exp_id: str = ""
     """The ID of the new experiment"""
-    test_exp_name: str = "whole_dec_options_sparse_init"
+    test_exp_name: str = "test_learnOptions_randomInit_discreteMasks"
     """the name of this experiment"""
     test_env_id: str = "MiniGrid-FourRooms-v0"
     """the id of the environment for testing
@@ -57,8 +58,8 @@ class Args:
     total_timesteps: int = 1_500_000
     """total timesteps for testing"""
     # learning_rate: Union[List[float], float] = (0.0005, 0.0005, 5e-05) # Vanilla RL
-    # learning_rate: Union[List[float], float] = (0.0005, 0.001, 0.001)
-    learning_rate: Union[List[float], float] = (0.0005, 0.0005, 0.0005) # Whole Dec-Option
+    learning_rate: Union[List[float], float] = (0.0005, 0.001, 0.001)
+    # learning_rate: Union[List[float], float] = (0.0005, 0.0005, 0.0005) # Dec-Option Whole 
     """the learning rate of the optimize for testing"""
     num_envs: int = 4
     """the number of parallel game environments for testing"""
@@ -77,14 +78,14 @@ class Args:
     norm_adv: bool = True
     """Toggles advantages normalization for testing"""
     # clip_coef: Union[List[float], float] = (0.15, 0.1, 0.2) # Vanilla RL
-    # clip_coef: Union[List[float], float] = (0.25, 0.2, 0.2)
-    clip_coef: Union[List[float], float] = (0.3, 0.25, 0.15) # Whole Dec-Option
+    clip_coef: Union[List[float], float] = (0.25, 0.2, 0.2)
+    # clip_coef: Union[List[float], float] = (0.3, 0.25, 0.15) # Dec-Option Whole 
     """the surrogate clipping coefficient"""
     clip_vloss: bool = True
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
     # ent_coef: Union[List[float], float] = (0.05, 0.2, 0.0) # Vanilla RL
-    ent_coef: Union[List[float], float] = (0.15, 0.05, 0.05) # Whole Dec-Option
-    # ent_coef: Union[List[float], float] = (0.1, 0.1, 0.1)
+    # ent_coef: Union[List[float], float] = (0.15, 0.05, 0.05) # Dec-Option Whole 
+    ent_coef: Union[List[float], float] = (0.1, 0.1, 0.1)
     """coefficient of the entropy"""
     vf_coef: float = 0.5
     """coefficient of the value function"""
@@ -143,6 +144,12 @@ def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, seed: int,
             monitor_gym=True,
             save_code=True,
         )
+
+    buffer = "Parameters:\n"
+    for key, value in vars(args).items():
+        buffer += (f"{key}: {value}\n")
+    logger.info(buffer)
+    utils.logger_flush(logger)
     
     if args.test_env_id == "MiniGrid-FourRooms-v0":
         envs = gym.vector.SyncVectorEnv(
@@ -179,7 +186,8 @@ def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, seed: int,
               model_file_name=model_path, 
               device=device, 
               logger=logger, 
-              writer=writer)
+              writer=writer,
+              sparse_init=False)
 
 
 def main(args: Args):
@@ -219,7 +227,7 @@ if __name__ == "__main__":
         args.problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
     elif args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
         args.problems = [args.env_id + f"_{seed}" for seed in args.env_seeds]
-    
+
     # Setting test seeds and test problem names
     if isinstance(args.test_seeds, list) or isinstance(args.test_seeds, tuple):
         args.test_seeds = list(map(int, args.test_seeds))

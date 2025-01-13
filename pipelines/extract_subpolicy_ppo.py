@@ -27,23 +27,24 @@ class Args:
     exp_id: str = ""
     """the id to be set for the experiment"""
     # exp_name: str = "extract_decOptionWhole_randomInit"
-    # exp_name: str = "extract_decOptionWhole_sparseInit"
-    exp_name: str = "extract_learnOptions_randomInit_discreteMasks"
+    exp_name: str = "extract_decOptionWhole_sparseInit"
+    # exp_name: str = "extract_learnOptions_randomInit_discreteMasks"
+    # exp_name: str = "extract_learnOptions_randomInit_pitisFunction"
     """the name of this experiment"""
     problems: List[str] = ("TL-BR", "TR-BL", "BR-TL", "BL-TR")
     """"""
     env_seeds: Union[List[int], str] = (0,1,2)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
-    model_paths: List[str] = (
-        'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_envsd0',
-        'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd1',
-        'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd2'
-    )
     # model_paths: List[str] = (
-    #     'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_envsd0',
-    #     'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd1',
-    #     'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd2',
-    #     )
+    #     'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_envsd0',
+    #     'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd1',
+    #     'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd2'
+    # )
+    model_paths: List[str] = (
+        'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_envsd0',
+        'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd1',
+        'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd2',
+        )
     # model_paths: List[str] = (
     #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd0_TL-BR',
     #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd1_TR-BL',
@@ -86,7 +87,7 @@ class Args:
     """The seed used for reproducibilty of the script"""
     torch_deterministic: bool = True
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
-    track: bool = False
+    track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
     wandb_project_name: str = "LMNOP"
     """the wandb's project name"""
@@ -513,21 +514,10 @@ def hill_climbing_mask_space_training_data():
     # option_length = list(range(2, 5))
     args.exp_id += f'_olen{",".join(map(str, option_length))}'
 
-    params = {
-        'hidden_size': args.hidden_size,
-        'option_length': option_length,
-        'game_width': game_width,
-        'number_restarts': args.number_restarts,
-        'number_actions': number_actions,
-        'l1_lambda': args.l1_lambda,
-        'problems': args.problems
-    }
-
     buffer = "Parameters:\n"
-    for key, value in params.items():
+    for key, value in vars(args).items():
         buffer += (f"{key}: {value}\n")
     logger.info(buffer)
-
     utils.logger_flush(logger)
 
     previous_loss = None
@@ -640,21 +630,10 @@ def hill_climbing_all_segments():
     # option_length = list(range(2, 5))
     args.exp_id += f'_olen{",".join(map(str, option_length))}'
 
-    params = {
-        'hidden_size': args.hidden_size,
-        'option_length': option_length,
-        'game_width': game_width,
-        'number_restarts': args.number_restarts,
-        'number_actions': number_actions,
-        'l1_lambda': args.l1_lambda,
-        'problems': args.problems
-    }
-
     buffer = "Parameters:\n"
-    for key, value in params.items():
+    for key, value in vars(args).items():
         buffer += (f"{key}: {value}\n")
     logger.info(buffer)
-
     utils.logger_flush(logger)
 
     logits_loss = LogitsLossActorCritic(logger)
@@ -816,19 +795,6 @@ def whole_dec_options_training_data_levin_loss():
             monitor_gym=True,
             save_code=True,
         )
-
-    params = {
-        'Environment': args.env_id,
-        'env_seeds': args.env_seeds,
-        'seed': args.seed,
-        'hidden_size': args.hidden_size,
-        'option_length': option_length,
-        'game_width': game_width,
-        'number_restarts': args.number_restarts,
-        'number_actions': number_actions,
-        'l1_lambda': args.l1_lambda,
-        'problems': args.problems
-    }
 
     buffer = "Parameters:\n"
     for key, value in vars(args).items():
@@ -1188,9 +1154,9 @@ def learn_options():
 
 def main():
     # hill_climbing_mask_space_training_data()
-    # whole_dec_options_training_data_levin_loss()
+    whole_dec_options_training_data_levin_loss()
     # hill_climbing_all_segments()
-    learn_options()
+    # learn_options()
 
 
 if __name__ == "__main__":

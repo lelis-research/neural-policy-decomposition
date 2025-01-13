@@ -162,7 +162,7 @@ def sparse_init(tensor, sparsity, type='uniform'):
         raise ValueError("Only tensors with 2 or 4 dimensions are supported")
 
 class PPOAgent(nn.Module):
-    def __init__(self, envs, hidden_size=6, sparse_init=False):
+    def __init__(self, envs, hidden_size=6, sparse_init=False, discrete_masks=True):
         super().__init__()
         if isinstance(envs, ComboGym):
             observation_space_size = envs.get_observation_space()
@@ -209,6 +209,7 @@ class PPOAgent(nn.Module):
         self.option_size = None
         self.problem_id = None
         self.environment_args = None
+        self.discrete_masks = discrete_masks
         
     def get_value(self, x):
         return self.critic(x)
@@ -225,7 +226,7 @@ class PPOAgent(nn.Module):
         self.option_size = option_size
         self.problem_id = problem
 
-    def _masked_neuron_operation(self, logits, mask, discrete_masks=True):
+    def _masked_neuron_operation(self, logits, mask):
         """
         Apply a mask to neuron outputs in a layer.
 
@@ -243,7 +244,7 @@ class PPOAgent(nn.Module):
             raise Exception("No mask is set for the agent.")
         relu_out = torch.relu(logits)
         
-        if discrete_masks:            
+        if self.discrete_masks:            
             output = mask * (mask - 1) / 2 * relu_out + mask * (mask + 1) * logits / 2
         else:
             alpha = 10
