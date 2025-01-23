@@ -36,7 +36,7 @@ def _l1_norm(model, lambda_l1):
     l1_loss = 0
     for name, param in model.named_parameters():
         # Only apply L1 regularization to input weights of GRU (weight_ih_l0)
-        if 'weight_ih_l0' in name and "bias" not in name:
+        if 'network' in name and "bias" not in name:
             l1_loss += torch.sum(torch.abs(param))
     return lambda_l1 * l1_loss
 
@@ -51,7 +51,7 @@ def train_model(problem="test", option_dir=None):
     use_options = 0
     if option_dir is not None:
         use_options = 1
-    run_name = f"{args.rnn_type}-{args.hidden_size}-{args.episode_length}-{args.num_steps}-{problem}-{args.seed}-{use_options}-quantized"
+    run_name = f"{args.rnn_type}-{args.hidden_size}-{args.episode_length}-{args.num_steps}-{problem}-{args.seed}-{use_options}-{args.quantized}"
     print(run_name)
     if args.track:
         import wandb
@@ -92,7 +92,7 @@ def train_model(problem="test", option_dir=None):
     if args.rnn_type == 'lstm':
         agent = LstmAgent(envs, args.hidden_size).to(device)
     elif args.rnn_type == 'gru':
-        agent = GruAgent(envs, args.hidden_size, option_len=len(options), quantized=args.quantized).to(device)
+        agent = GruAgent(envs, args.hidden_size, feature_extractor=True, option_len=len(options), quantized=args.quantized).to(device)
     else:
         print("Unknown type of model. Please choose between either LSTM or GRU.")
         exit()
@@ -142,7 +142,10 @@ def train_model(problem="test", option_dir=None):
                     param_group['lr'] = lr_value
                 elif param_group.get('name') == 'other':
                     param_group['lr'] = lr_other
-
+        episodic_r_avg = 0
+        episodic_l_avg = 0
+        episodic_goal_avg = 0
+        counter = 0
         for step in range(0, args.num_steps):
             global_step += args.num_envs
             obs[step] = next_obs
@@ -160,6 +163,7 @@ def train_model(problem="test", option_dir=None):
 
             # TRY NOT TO MODIFY: execute the game and log data.
             next_obs, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
+            print(infos)
             next_done = np.logical_or(terminations, truncations)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
@@ -167,11 +171,19 @@ def train_model(problem="test", option_dir=None):
             if "final_info" in infos:
                 for info in infos["final_info"]:
                     if info and "episode" in info:
-                        print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+                        # print(f"global_step={global_step}, episodic_return={info["episode"]}")
                         writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-                        writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
-                        if args.track:
-                            wandb.log({"episodic_return":info["episode"]["r"], "episodic_length": info["episode"]["l"]})
+                        writer.add_scalar("charts/episodic_length", info["l"], global_step)
+                        episodic_l_avg += info["l"]
+                        episodic_r_avg += info["episode"]["r"][0]
+                        episodic_goal_avg += info["g"]
+                        counter += 1
+        episodic_l_avg /= float(counter)
+        episodic_r_avg /= float(counter)
+        episodic_goal_avg /= float(counter)
+        # print(episodic_l_avg)
+        # if args.track:
+        #     wandb.log({"episodic_return":episodic_r_avg , "episodic_length": episodic_l_avg})
 
         # bootstrap value if not done
         with torch.no_grad():
@@ -297,12 +309,13 @@ def train_model(problem="test", option_dir=None):
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
         if args.track:
-            wandb.log({"value_loss": v_loss.item(), "policy_loss":pg_loss.item(),"entropy":entropy_loss.item(), "lr":lr_other, "valuelr":lr_value, "clipfac":np.mean(clipfracs), "old_approx_kl": old_approx_kl.item(), "approx_kl": approx_kl.item(), "explained_variance": explained_var})
+            wandb.log({"value_loss": v_loss.item(), "policy_loss":pg_loss.item(),"entropy":entropy_loss.item(), "lr":lr_other, "valuelr":lr_value, "clipfac":np.mean(clipfracs), "old_approx_kl": old_approx_kl.item(), "approx_kl": approx_kl.item(), "explained_variance": explained_var, "episodic_return":episodic_r_avg ,"episodic_goals_reached":episodic_goal_avg, "episodic_length": episodic_l_avg})
     envs.close()
     writer.close()
     if not os.path.exists(f'models/{args.seed}'):
         os.mkdir(f'models/{args.seed}')
-    torch.save(agent.state_dict(), f'models/{args.seed}/{problem}.pt')
+    torch.save(agent.state_dict(), f'models/{args.seed}/{problem}-{use_options}-50-0001-not-quantized.pt')
 
 if __name__ == "__main__":
-    train_model()
+    # train_model(option_dir="options/selected_options.pkl")
+    train_model(option_dir=None)

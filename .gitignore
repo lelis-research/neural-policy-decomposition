@@ -20,3 +20,6 @@ selected_options.pkl
 trajectories/*
 wandb/*
 options/*
+wandb_1/*
+wandb_LOCAL/*
+runs_LOCAL/*

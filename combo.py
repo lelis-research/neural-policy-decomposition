@@ -226,6 +226,7 @@ class Game:
         2, 1, 0 -> left (2)
         1, 0, 2 -> right (3)
         """
+        reach_goal = False
         if self._partial_observability:
             self._last_action = action
         # each column in _state_matrix represents an action
@@ -261,9 +262,12 @@ class Game:
                 # adding the reached goal to the reached goal set, used for determining the termination of the episode        
                 if isinstance(self._goal, set) and (self._x, self._y) in self._goal and (self._x, self._y) not in self._goals_reached:
                     self._goals_reached.add((self._x, self._y))
+                    self._matrix_goal[self._x][self._y] = 0
+                    reach_goal = True
             self._state = []
         if self._visitation_bonus:
             self._state_visitation_count[copy.deepcopy(tuple(self._matrix_unit.ravel()))] += 1
+        return reach_goal
 
     def get_exploration_bonus(self):
         return 0.5 / (self._state_visitation_count[copy.deepcopy(tuple(self._matrix_unit.ravel()))] ** 0.5)

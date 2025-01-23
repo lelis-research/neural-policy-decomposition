@@ -5,7 +5,7 @@ from dataclasses import dataclass
 class ArgsTest:
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
     """the name of this experiment"""
-    seed: int = 1
+    seed: int = 0
     """seed of the experiment"""
     torch_deterministic: bool = True
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
@@ -24,15 +24,15 @@ class ArgsTest:
     # env_id: str = "BreakoutNoFrameskip-v4"
     env_id: str = "ComboGrid-v0"
     """the id of the environment"""
-    total_timesteps: int = 35000000
+    total_timesteps: int = 10000000
     """total timesteps of the experiments"""
-    learning_rate: float = 2.5e-4
+    learning_rate: float = 5e-5
     """the learning rate of the optimizer"""
-    value_learning_rate: float = 1.5e-4
+    value_learning_rate: float = 1e-4
     """the learning rate of the optimizer for value network"""
-    num_envs: int = 8
+    num_envs: int = 1
     """the number of parallel game environments"""
-    num_steps: int = 150
+    num_steps: int = 50
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: bool = True
     """Toggle learning rate annealing for policy and value networks"""
@@ -40,9 +40,9 @@ class ArgsTest:
     """the discount factor gamma"""
     gae_lambda: float = 0.95
     """the lambda for the general advantage estimation"""
-    num_minibatches: int = 4
+    num_minibatches: int = 1
     """the number of mini-batches"""
-    update_epochs: int = 6
+    update_epochs: int = 8
     """the K epochs to update the policy"""
     norm_adv: bool = True
     """Toggles advantages normalization"""
@@ -52,9 +52,9 @@ class ArgsTest:
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
     ent_coef: float = 0.07
     """coefficient of the entropy"""
-    vf_coef: float = 0.5
+    vf_coef: float = 0.46
     """coefficient of the value function"""
-    max_grad_norm: float = 0.5
+    max_grad_norm: float = 0.37
     """the maximum norm for the gradient clipping"""
     target_kl: float = None
     """the target KL divergence threshold"""
@@ -64,7 +64,7 @@ class ArgsTest:
     "weight decay for l2 regularization"
     l1_lambda: float = 0
     "l1 lambda regularization"
-    hidden_size: int = 256
+    hidden_size: int = 300
     "size of RNN hidden states"
     problem: str = "test"
     "Problem"
@@ -76,10 +76,11 @@ class ArgsTest:
     "the width of the grid"
     visitation_bonus: bool = True
     "toggles using visitation bonus in calculating reward"
-    use_options: int = 1
+    use_options: int = 0
     "set to 0 for not using options, and 1 for using options when training"
-    quantized: int = 1
+    quantized: int = 0
     "set to 0 for models without quantized hidden states, and 1 models with quantized hidden states"
+    ppo_type: str = "gru"
 
     # to be filled in runtime
     batch_size: int = 0

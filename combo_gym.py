@@ -24,6 +24,7 @@ class ComboGym(gym.Env):
     def reset(self,seed=0, **kwargs):
         self._game.reset()
         self.n_steps = 0
+        self.goals_reached = 0
         return self._get_obs(), {}
     
     def step(self, action:int):
@@ -36,29 +37,46 @@ class ComboGym(gym.Env):
             if is_applicable:
                 reward = 0
                 for a in actions:
-                    self._game.apply_action(a)
+                    reach_goal = self._game.apply_action(a)
                     self.n_steps += 1
                     if not self._game.is_over():
                         if self._visitation_bonus:
-                            reward += -1 + self._game.get_exploration_bonus()
+                            if not reach_goal:
+                                reward += -1 + self._game.get_exploration_bonus()
+                            else:
+                                reward += 1 + self._game.get_exploration_bonus()
+                                self.goals_reached += 1
                         else:
-                            reward += -1
+                            if not reach_goal:
+                                reward += -1
+                            else:
+                                reward += 1
+                                self.goals_reached += 1
                     else:
-                        reward += 0
+                        reward += 1
+                        self.goals_reached += 1
                         break
                     if self.n_steps == self.ep_len:
                         trunctuated = True
                         break
 
-
         else:
-            self._game.apply_action(action)
-            reward = -1
+            reach_goal = self._game.apply_action(action)
+            reward = 0
             self.n_steps += 1
             if self._visitation_bonus:
-                reward += self._game.get_exploration_bonus()
-            if self._game.is_over():
-                reward = 0
+                if not reach_goal:
+                    reward += -1 + self._game.get_exploration_bonus()
+                else:
+                    reward += 1 + self._game.get_exploration_bonus()
+                    self.goals_reached += 1
+            else:
+                if not reach_goal:
+                    reward += -1
+                else:
+                    reward += 1
+                    self.goals_reached += 1
+
 
         terminated = self._game.is_over()
 
@@ -70,5 +88,5 @@ class ComboGym(gym.Env):
             trunctuated = True
 
         
-        return self._get_obs(), reward, terminated, trunctuated, {}
+        return self._get_obs(), reward, terminated, trunctuated, {"l":self.n_steps, "r":reward, "g":self.goals_reached}
     
