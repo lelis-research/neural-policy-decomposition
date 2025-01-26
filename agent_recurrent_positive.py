@@ -212,7 +212,6 @@ def train_model(problem="test", option_dir=None):
             # global_step += number_samples
             positive_step += number_samples
 
-        global_step += len(obs)
 
         if "final_info" in infos:
             for info in infos["final_info"]:
@@ -220,7 +219,7 @@ def train_model(problem="test", option_dir=None):
                     episodic_l_avg = info["l"]
                     episodic_r_avg = info["episode"]["r"][0]
                     episodic_goal_avg = info["g"]
-
+                    global_step += info["l"]
 
         if not positive_example:
             # continue with only 20% chance

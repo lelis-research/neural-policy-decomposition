@@ -12,6 +12,7 @@ import pickle
 from selecting_options_rewire import extract_options
 import gymnasium as gym
 from combo_gym import ComboGym
+import random
 
 device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
 
@@ -80,7 +81,11 @@ if __name__ =="__main__":
     args = tyro.cli(Args)
     ncpus = int(os.environ.get('SLURM_CPUS_PER_TASK',default=1))
 
-
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.backends.cudnn.deterministic = args.torch_deterministic
+    
     with multiprocessing.Pool(processes=ncpus) as pool:  # Adjust the number of processes here
         pool.map(train_model, problems)
 
