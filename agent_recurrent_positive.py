@@ -36,7 +36,7 @@ def _l1_norm(model, lambda_l1):
             l1_loss += torch.sum(torch.abs(param))
     return lambda_l1 * l1_loss
 
-def train_model(problem="test", option_dir=None):
+def train_model_positive(problem="test", option_dir=None, seed=0):
     args = tyro.cli(ArgsTest)
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
@@ -44,7 +44,7 @@ def train_model(problem="test", option_dir=None):
     use_options = 0
     if option_dir is not None:
         use_options = 1
-    run_name = f"{args.rnn_type}-{args.hidden_size}-{args.episode_length}-{args.num_steps}-{args.problem}-{args.seed}-{use_options}-quantized"
+    run_name = f"{args.rnn_type}-{args.hidden_size}-{args.episode_length}-{args.num_steps}-{args.problem}-{seed}-{use_options}-quantized"
     print(run_name)
     if args.track:
         import wandb
@@ -69,9 +69,9 @@ def train_model(problem="test", option_dir=None):
             options = pickle.load(file)
 
     # TRY NOT TO MODIFY: seeding
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
@@ -109,7 +109,7 @@ def train_model(problem="test", option_dir=None):
     global_step = 0
     positive_step = 0
     start_time = time.time()
-    next_obs, _ = envs.reset(seed=args.seed)
+    next_obs, _ = envs.reset(seed=seed)
 
     next_obs = torch.Tensor(next_obs).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
@@ -449,9 +449,9 @@ def train_model(problem="test", option_dir=None):
     envs.close()
     writer.close()
 
-    torch.save(agent.state_dict(), f'models/{args.seed}/{problem}-{use_options}-50-positive-not-quantized.pt')
+    torch.save(agent.state_dict(), f'models/{seed}/{problem}-{use_options}-50-positive-not-quantized.pt')
 
 
 if __name__ == "__main__":
-    train_model(option_dir="options/selected_options.pkl")
+    train_model_positive(option_dir="options/selected_options.pkl")
     # train_model(option_dir=None)

@@ -36,7 +36,7 @@ class Trajectory:
     
 def generate_trajectories(args, problem):
         env = gym.vector.SyncVectorEnv(
-        [make_env(problem) for i in range(1)],
+        [make_env(problem, width=args.game_width) for i in range(1)],
         )
         rnn = GruAgent(env,args.hidden_size, option_len=0, greedy=True)
         rnn.load_state_dict(torch.load(f'models/{args.seed}/{problem}.pt'))
@@ -46,18 +46,18 @@ def generate_trajectories(args, problem):
         next_rnn_state = rnn.init_hidden()
         next_done = torch.zeros(1).to(device)
         next_obs, _ = env.reset()
-        for i in range(5):
-            for j in range(5):
+        for i in range(args.game_width):
+            for j in range(args.game_width):
                 traj = Trajectory()
-                env = Game(5, 5, problem, multiple_initial_states=False)
-                env._matrix_unit = np.zeros((5, 5))
+                env = Game(args.game_width, args.game_width, problem, multiple_initial_states=False)
+                env._matrix_unit = np.zeros((args.game_width, args.game_width))
                 env._matrix_unit[i][j] = 1
                 env._x, env._y = (i, j)
                 next_rnn_state = rnn.init_hidden()
                 counter = 0
                 next_obs = env.get_observation()
                 # print(i, j, '\n')
-                while not env.is_over() and counter<30:
+                while not env.is_over() and counter < args.episode_length:
                     next_obs = torch.Tensor(next_obs).to(device)
                     action, logprob, _, value, next_rnn_state = rnn.get_action_and_value(next_obs, next_rnn_state, next_done)
                     # print(action[0])
@@ -99,4 +99,4 @@ if __name__ =="__main__":
     #TODO train test model with and without options
     options = [None, f"options/{args.seed}/selected_options.pkl"]
     with multiprocessing.Pool(processes=ncpus) as pool:  # Adjust the number of processes here
-        pool.starmap(train_model, [("test", o) for o in options])
+        pool.starmap(train_model, [("test", o, args.seed) for o in options])
