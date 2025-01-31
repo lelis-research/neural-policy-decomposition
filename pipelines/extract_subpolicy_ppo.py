@@ -11,6 +11,8 @@ import numpy as np
 from typing import List
 from utils import utils
 from dataclasses import dataclass
+import itertools
+import logging
 from typing import Union, List
 import concurrent.futures
 from pipelines.losses import LevinLossActorCritic, LogitsLossActorCritic
@@ -24,15 +26,11 @@ from utils.utils import timing_decorator
 
 @dataclass
 class Args:
-    exp_id: str = ""
-    """the id to be set for the experiment"""
-    # exp_name: str = "extract_decOptionWhole_randomInit"
-    exp_name: str = "extract_decOptionWhole_sparseInit"
+    exp_name: str = "extract_decOptionWhole_randomInit"
+    # exp_name: str = "extract_decOptionWhole_sparseInit"
     # exp_name: str = "extract_learnOptions_randomInit_discreteMasks"
     # exp_name: str = "extract_learnOptions_randomInit_pitisFunction"
     """the name of this experiment"""
-    problems: List[str] = ("TL-BR", "TR-BL", "BR-TL", "BL-TR")
-    """"""
     env_seeds: Union[List[int], str] = (0,1,2)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
     # model_paths: List[str] = (
@@ -41,37 +39,45 @@ class Args:
     #     'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd2'
     # )
     model_paths: List[str] = (
-        'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_envsd0',
-        'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd1',
-        'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd2',
-        )
+        'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h6_l10_lr0.0005_clip0.25_ent0.1_envsd0',
+        'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h6_l10_lr0.001_clip0.2_ent0.1_envsd1',
+        'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h6_l10_lr0.001_clip0.2_ent0.1_envsd2'
+    )
+    # model_paths: List[str] = (
+    #     'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_envsd0',
+    #     'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd1',
+    #     'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd2',
+    #     )
     # model_paths: List[str] = (
     #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd0_TL-BR',
     #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd1_TR-BL',
     #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd2_BR-TL',
     #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd3_BL-TR',
     # )
-    cuda: bool = True
-    """if toggled, cuda will be enabled by default"""
+
+    # These attributes will be filled in the runtime
+    exp_id: str = ""
+    """The ID of the finished experiment; to be filled in run time"""
+    problems: List[str] = ()
+    """the name of the problems the agents were trained on"""
 
     # Algorithm specific arguments
     env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
-    # env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
     """the id of the environment corresponding to the trained agent
     choices from [ComboGrid, MiniGrid-SimpleCrossingS9N1-v0]
     """
     cpus: int = 4
     """"The number of CPUTs used in this experiment."""
     
-    # hyperparameter arguments
+    # hyperparameters
     game_width: int = 5
     """the length of the combo/mini grid square"""
-    hidden_size: int = 64
+    hidden_size: int = 6
     """"""
     l1_lambda: float = 0
     """"""
-    option_length: int = 3
-    """number of while loops for applying the option"""
+
+    # hill climbing arguments
     number_restarts: int = 400
     """number of hill climbing restarts for finding one option"""
 
@@ -89,7 +95,7 @@ class Args:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "LMNOP"
+    wandb_project_name: str = "BASELINE0"
     """the wandb's project name"""
     wandb_entity: str = None
     """the entity (team) of wandb's project"""
@@ -97,6 +103,16 @@ class Args:
     """The name of the log file"""
     log_level: str = "INFO"
     """The logging level"""
+
+
+def get_single_environment(args: Args, seed):
+    if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
+        env = get_training_tasks_simplecross(view_size=args.game_width, seed=seed)
+    elif args.env_id == "ComboGrid":
+        env = ComboGym(rows=args.game_width, columns=args.game_width, problem=args.problems[0])
+    else:
+        raise NotImplementedError
+    return env
 
 
 def process_args() -> Args:
@@ -145,12 +161,7 @@ def regenerate_trajectories(args: Args, verbose=False, logger=None):
     
     for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
         model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
-        if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-            env = get_training_tasks_simplecross(view_size=args.game_width, seed=seed)
-        elif args.env_id == "MiniGrid-FourRooms-v0":
-            raise NotImplementedError("Environment creation not implemented!")
-        else:
-            env = ComboGym(rows=args.game_width, columns=args.game_width, problem=problem)
+        env = get_single_environment(args, seed=seed)
         
         if verbose:
             logger.info(f"Loading Trajectories from {model_path} ...")
@@ -161,9 +172,6 @@ def regenerate_trajectories(args: Args, verbose=False, logger=None):
 
         trajectory = agent.run(env, verbose=verbose)
         trajectories[problem] = trajectory
-
-        if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-            assert trajectories[problem].get_length() < 16, f"model not optimized! {(seed, problem, model_directory)}"
 
         if verbose:
             logger.info(f"The trajectory length: {len(trajectory.get_state_sequence())}")
@@ -207,7 +215,7 @@ def save_options(options: List[PPOAgent], trajectories: dict, args: Args, logger
             'mask': model.mask,
             'n_iterations': model.option_size,
             'problem': model.problem_id,
-            'environment_args': model.environment_args
+            'environment_args': vars(args)
         }, model_path)
     
     logger.info(f"Options saved to {save_dir}")
@@ -431,35 +439,6 @@ def hill_climbing(
                 if i % 100 == 0:
                     logger.info(f'Progress: {i}/{args.number_restarts}')
         else:
-            # # Use ProcessPoolExecutor to run the hill climbing iterations in parallel
-            # with concurrent.futures.ThreadPoolExecutor(max_workers=args.cpus) as executor:
-            #     # Submit tasks to the executor with all required arguments
-            #     futures = [
-            #         executor.submit(
-            #             hill_climbing_iter, i, agent, option_size, problem_str, number_actions, 
-            #             mask_values, trajectories, selected_masks, selected_masks_models, 
-            #             selected_option_sizes, default_loss, args, loss
-            #         )
-            #         for i in range(args.number_restarts + 1)
-            #     ]
-
-            #     # Process the results as they complete
-            #     for future in concurrent.futures.as_completed(futures):
-            #         try:
-            #             i, best_value, best_mask, init_mask, n_steps, applicable = future.result()
-            #             _update_best(i=i, 
-            #                          best_value=best_value, 
-            #                          best_mask=best_mask,
-            #                          n_steps=n_steps, 
-            #                          init_mask=init_mask, 
-            #                          applicable=applicable,
-            #                          n_applicable=n_applicable, 
-            #                          option_size=option_size)
-            #             if i % 100 == 0:
-            #                 logger.info(f'Progress: {i}/{args.number_restarts}')
-            #         except Exception as exc:
-            #             logger.error(f'restart #{i} generated an exception: {exc}')
-
             # Use ProcessPoolExecutor to run the hill climbing iterations in parallel
             with concurrent.futures.ProcessPoolExecutor(max_workers=args.cpus) as executor:
                 # Submit tasks to the executor with all required arguments
@@ -503,7 +482,7 @@ def hill_climbing_mask_space_training_data():
     args = process_args()
     
     # Logger configurations
-    logger = utils.get_logger('hill_climbing_logger', args.log_level, args.log_path, suffix="option_extraction")
+    logger = utils.get_logger('hill_climbing_logger', args.log_level, args.log_path)
 
     game_width = args.game_width
     number_actions = 3
@@ -540,12 +519,7 @@ def hill_climbing_mask_space_training_data():
         for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
             model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
             logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
-            if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-                env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
-            elif args.env_id == "ComboGrid":
-                env = ComboGym(rows=game_width, columns=game_width, problem=problem)
-            else:
-                raise NotImplementedError
+            env = get_single_environment(args, seed=seed)
 
             agent = PPOAgent(env, hidden_size=args.hidden_size)
             agent.load_state_dict(torch.load(model_path))
@@ -610,31 +584,16 @@ def hill_climbing_mask_space_training_data():
 
 
 @timing_decorator
-def hill_climbing_all_segments():
+def hill_climbing_all_segments(args: Args, logger: logging.Logger):
     
     """
     This function performs hill climbing in the space of masks of a ReLU neural network
     to minimize the Levin loss of a given data set. 
     """
-    args = process_args()
-    
-    # Logger configurations
-    logger = utils.get_logger('hc_all_segments_logger', args.log_level, args.log_path, suffix="option_extraction")
 
-    game_width = args.game_width
     number_actions = 3
 
     trajectories = regenerate_trajectories(args, verbose=True, logger=logger)
-    max_length = max([len(t.get_trajectory()) for t in trajectories.values()])
-    option_length = list(range(2, max_length + 1))
-    # option_length = list(range(2, 5))
-    args.exp_id += f'_olen{",".join(map(str, option_length))}'
-
-    buffer = "Parameters:\n"
-    for key, value in vars(args).items():
-        buffer += (f"{key}: {value}\n")
-    logger.info(buffer)
-    utils.logger_flush(logger)
 
     logits_loss = LogitsLossActorCritic(logger)
     levin_loss = LevinLossActorCritic(logger)
@@ -644,10 +603,7 @@ def hill_climbing_all_segments():
     for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
         model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
         logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
-        if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-            env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
-        elif args.env_id == "ComboGrid":
-            env = ComboGym(rows=game_width, columns=game_width, problem=problem)
+        env = get_single_environment(args, seed=seed)
         
         agent = PPOAgent(env, hidden_size=args.hidden_size)
         agent.load_state_dict(torch.load(model_path))
@@ -691,14 +647,8 @@ def hill_climbing_all_segments():
         best_mask_model = None
 
         for mask, problem, option_size, model_path, segment in all_masks_info:
-            model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
             logger.info(f'Extracting from the agent trained on problem={problem}, seed={seed}, segment=({segment},{segment+option_size})')
-            if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-                env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
-            elif args.env_id == "ComboGrid":
-                env = ComboGym(rows=game_width, columns=game_width, problem=problem)
-            else:
-                raise NotImplementedError
+            env = get_single_environment(args, seed=seed)
             
             agent = PPOAgent(env, hidden_size=args.hidden_size)
             agent.load_state_dict(torch.load(model_path))
@@ -715,15 +665,6 @@ def hill_climbing_all_segments():
                 best_loss = loss_value
                 best_mask_model = agent
                 agent.to_option(mask, option_size, problem)
-                if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-                    agent.environment_args = {
-                        "seed": seed,
-                        "game_width": game_width
-                    }
-                else:
-                    agent.environment_args = {
-                        "game_width": game_width
-                    }
 
         # we recompute the Levin loss after the automaton is selected so that we can use 
         # the loss on all trajectories as the stopping condition for selecting masks
@@ -760,47 +701,15 @@ def hill_climbing_all_segments():
 
 
 @timing_decorator
-def whole_dec_options_training_data_levin_loss():
+def whole_dec_options_training_data_levin_loss(args: Args, logger: logging.Logger):
     """
     This function performs hill climbing in the space of masks of a ReLU neural network
     to minimize the Levin loss of a given data set. 
     """
-    args = process_args()
-    
-    # Logger configurations
-    logger = utils.get_logger('whole_dec_options', args.log_level, args.log_path, suffix="option_extraction")
-    logger.info("Extract Dec-Option Whole ... ")
-    
-
-    game_width = args.game_width
     number_actions = 3
 
     trajectories = regenerate_trajectories(args, verbose=True, logger=logger)
     max_length = max([len(t.get_trajectory()) for t in trajectories.values()])
-    option_length = list(range(2, max_length + 1))
-    # args.exp_id += f'_olen{",".join(map(str, option_length))}'
-    
-    run_name = f'{args.exp_id}_sd{args.seed}'
-    if args.track:
-        import wandb
-
-        wandb.init(
-            project=args.wandb_project_name,
-            group=args.exp_id,
-            job_type="eval",
-            entity=args.wandb_entity,
-            sync_tensorboard=True,
-            config=vars(args),
-            name=run_name,
-            monitor_gym=True,
-            save_code=True,
-        )
-
-    buffer = "Parameters:\n"
-    for key, value in vars(args).items():
-        buffer += (f"{key}: {value}\n")
-    logger.info(buffer)
-    utils.logger_flush(logger)
 
     previous_loss = None
     best_loss = None
@@ -821,12 +730,7 @@ def whole_dec_options_training_data_levin_loss():
         for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
             model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
             logger.info(f'Extracting from the agent trained on {problem}, seed={seed}')
-            if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-                env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
-            elif args.env_id == "ComboGrid":
-                env = ComboGym(rows=game_width, columns=game_width, problem=problem)
-            else:
-                raise NotImplementedError
+            env = get_single_environment(args, seed=seed)
 
             agent = PPOAgent(env, hidden_size=args.hidden_size)
             agent.load_state_dict(torch.load(model_path))
@@ -839,15 +743,6 @@ def whole_dec_options_training_data_levin_loss():
                     best_loss = levin_loss
                     best_mask_model = agent
                     agent.to_option(mask, i, problem)
-                    if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-                        agent.environment_args = {
-                            "seed": seed,
-                            "game_width": game_width
-                        }
-                    else:
-                        agent.environment_args = {
-                            "game_width": game_width
-                        }
 
         logger.info(f'Summary of option #{len(selected_mask_models)}: \nBest Mask:{best_mask_model.mask}, best_loss={best_loss}, option_size={best_mask_model.option_size}, option problem={best_mask_model.problem_id}\nPrevious selected loss:{previous_loss}')
         utils.logger_flush(logger)
@@ -884,13 +779,6 @@ def whole_dec_options_training_data_levin_loss():
 
     loss.print_output_subpolicy_trajectory(selected_mask_models, trajectories, logger=logger)
     utils.logger_flush(logger)
-
-    # logger.info("Testing on each grid cell")
-    # for seed, problem in zip(args.env_seeds, args.problems):
-    #     logger.info(f"Testing on each cell..., {problem}")
-    #     loss.evaluate_on_each_cell(selected_mask_models, problem, args=args, seed=seed, logger=logger)
-
-    # utils.logger_flush(logger)
 
 
 class STEQuantize(torch.autograd.Function):
@@ -931,7 +819,8 @@ def learn_mask(agent: PPOAgent, trajectories: dict, args: Args, discrete_masks=T
             # Apply transformations with requires_grad
 
             if discrete_masks:
-                mask_transformed = STEQuantize.apply(mask)
+                mask_transformed = 1.5 * torch.tanh(mask) + 0.5 * torch.tanh(-3 * mask)
+                mask_transformed = STEQuantize.apply(mask_transformed)
             else:
                 mask_transformed = 1.5 * torch.tanh(mask) + 0.5 * torch.tanh(-3 * mask)
                 mask_transformed = mask_transformed.clamp(-0.5, 0.5) * 2
@@ -974,47 +863,14 @@ def learn_mask_iter(trajectories, problem, s, length, agent, args, model_path, l
 
 
 @timing_decorator
-def learn_options():
+def learn_options(args: Args, logger: logging.Logger):
     """
     This function performs hill climbing in the space of masks of a ReLU neural network
     to minimize the Levin loss of a given data set. It uses gumbel_softmax to extract 
     """
-    args = process_args()
-    
-    # Logger configurations
-    logger = utils.get_logger('learn_options', args.log_level, args.log_path, suffix="learn_option")
-    logger.info("Learning Options ... ")
-
-    game_width = args.game_width
     number_actions = 3
 
     trajectories = regenerate_trajectories(args, verbose=True, logger=logger)
-    max_length = max([len(t.get_trajectory()) for t in trajectories.values()])
-    # option_length = list(range(2, max_length + 1))
-    # args.exp_id += f'_olen{",".join(map(str, option_length))}'
-
-    run_name = f'{args.exp_id}_sd{args.seed}'
-    if args.track:
-        import wandb
-
-        wandb.init(
-            project=args.wandb_project_name,
-            group=args.exp_id,
-            job_type="eval",
-            entity=args.wandb_entity,
-            sync_tensorboard=True,
-            config=vars(args),
-            name=run_name,
-            monitor_gym=True,
-            save_code=True,
-        )
-
-    buffer = "Parameters:\n"
-    for key, value in vars(args).items():
-        buffer += (f"{key}: {value}\n")
-    logger.info(buffer)
-    utils.logger_flush(logger)
-
 
     levin_loss = LevinLossActorCritic(logger)
 
@@ -1023,26 +879,12 @@ def learn_options():
     for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
         model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
         logger.info(f'Extracting from the agent trained on {problem}, env_seed={seed}')
-        if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-            env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
-        elif args.env_id == "ComboGrid":
-            env = ComboGym(rows=game_width, columns=game_width, problem=problem)
-        else:
-            raise NotImplementedError
+        env = get_single_environment(args, seed=seed)
         
         agent = PPOAgent(env, hidden_size=args.hidden_size)
         agent.load_state_dict(torch.load(model_path))
 
         t_length = trajectories[problem].get_length()
-
-        
-        # for length in range(2, t_length + 1):
-        #     for s in range(t_length - length):
-        #         sub_trajectory = {problem: trajectories[problem].slice(s, n=length)}
-        #         # learn option with this length using gumbel softmax
-        #         mask, init_loss, final_loss = learn_mask(agent, sub_trajectory, args, logger=logger)
-        #         all_masks_info.append((mask, problem, length, model_path, s))
-        #         logger.info(f'Progress: segment:{s} of length{length} done. init_loss={init_loss}, final_loss={final_loss}')
 
         with concurrent.futures.ProcessPoolExecutor(max_workers=args.cpus) as executor:
             # Submit tasks to the executor with all required arguments
@@ -1070,7 +912,7 @@ def learn_options():
 
     selected_masks = []
     selected_option_sizes = []
-    selected_mask_models = []
+    selected_options = []
     selected_options_problem = []
 
     previous_loss = None
@@ -1084,21 +926,13 @@ def learn_options():
         best_mask_model = None
 
         for mask, problem, option_size, model_path, segment in all_masks_info:
-            model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
             logger.info(f'Evaluating the option from problem={problem}, env_seed={seed}, segment=({segment},{segment+option_size})')
-            
-            if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-                env = get_training_tasks_simplecross(view_size=game_width, seed=seed)
-            elif args.env_id == "ComboGrid":
-                env = ComboGym(rows=game_width, columns=game_width, problem=problem)
-            else:
-                raise NotImplementedError
-
+            env = get_single_environment(args, seed=seed)
             agent = PPOAgent(env, hidden_size=args.hidden_size)
             agent.load_state_dict(torch.load(model_path))
 
             loss_value = levin_loss.compute_loss(masks=selected_masks + [mask], 
-                                           agents=selected_mask_models + [agent], 
+                                           agents=selected_options + [agent], 
                                            problem_str=problem, 
                                            trajectories=trajectories, 
                                            number_actions=number_actions, 
@@ -1108,55 +942,186 @@ def learn_options():
                 best_loss = loss_value
                 best_mask_model = agent
                 agent.to_option(mask, option_size, problem)   
-                if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-                    agent.environment_args = {
-                        "seed": seed,
-                        "game_width": game_width
-                    }
-                else:
-                    agent.environment_args = {
-                        "game_width": game_width
-                    } 
 
         # we recompute the Levin loss after the automaton is selected so that we can use 
         # the loss on all trajectories as the stopping condition for selecting masks
         selected_masks.append(best_mask_model.mask)
         selected_option_sizes.append(best_mask_model.option_size)
-        selected_mask_models.append(best_mask_model)
+        selected_options.append(best_mask_model)
         selected_options_problem.append(best_mask_model.problem_id)
-        best_loss = levin_loss.compute_loss(selected_masks, selected_mask_models, "", trajectories, number_actions, selected_option_sizes)
+        best_loss = levin_loss.compute_loss(selected_masks, selected_options, "", trajectories, number_actions, selected_option_sizes)
 
-        logger.info(f"Added option #{len(selected_mask_models)}; Levin loss of the current selected set: {best_loss} on all trajectories")
+        logger.info(f"Added option #{len(selected_options)}; Levin loss of the current selected set: {best_loss} on all trajectories")
         utils.logger_flush(logger)
 
     # remove the last automaton added
-    num_options = len(selected_mask_models)
-    selected_mask_models = selected_mask_models[:num_options - 1]
+    num_options = len(selected_options)
+    selected_options = selected_options[:num_options - 1]
 
     # printing selected options
     logger.info("Selected options:")
-    for i in range(len(selected_mask_models)):
+    for i in range(len(selected_options)):
         logger.info(f"Option #{i}:\n" + 
-                    f"mask={selected_mask_models[i].mask}\n" +
-                    f"size={selected_mask_models[i].option_size}\n" +
-                    f"problem={selected_mask_models[i].problem_id}")
+                    f"mask={selected_options[i].mask}\n" +
+                    f"size={selected_options[i].option_size}\n" +
+                    f"problem={selected_options[i].problem_id}")
 
-    save_options(options=selected_mask_models, 
+    save_options(options=selected_options, 
                  trajectories=trajectories,
                  args=args, 
                  logger=logger)
 
     utils.logger_flush(logger)
 
-    levin_loss.print_output_subpolicy_trajectory(selected_mask_models, trajectories, logger=logger)
+    levin_loss.print_output_subpolicy_trajectory(selected_options, trajectories, logger=logger)
+    utils.logger_flush(logger)
+
+
+def evaluate_all_masks_for_model(masks, agents, num_steps, problem, trajectories, loss_evaluator, args, number_actions):
+    """
+    Function that evaluates all masks for a given model. It returns the best mask (the one that minimizes the Levin loss)
+    for the current set of selected masks. It also returns the Levin loss of the best mask. 
+    """
+    values = [-1, 0, 1]
+
+    best_mask = None
+    best_value = None
+
+    combinations = itertools.product(values, repeat=args.hidden_size)
+
+    for value in combinations:
+        current_mask = torch.tensor(value, dtype=torch.int8).view(1, -1)
+        
+        loss = loss_evaluator.compute_loss(masks + [current_mask], agents, problem, trajectories, number_actions, num_steps)
+
+        if best_mask is None or loss < best_value:
+            best_value = loss
+            best_mask = copy.deepcopy(current_mask)
+            print(f"Best Mask so far: {best_mask.numpy()}, Best Levin Loss: {best_value}")
+                            
+    return best_mask, best_value
+
+@timing_decorator
+def evaluate_all_masks_levin_loss(args: Args, logger: logging.Logger):
+    """
+    This function implements the greedy approach for selecting masks (options) from Alikhasi and Lelis (2024).
+    This method evaluates all possible masks of a given model and adds to the pool of options the one that minimizes
+    the Levin loss. This process is repeated while we can minimize the Levin loss. 
+
+    This method should only be used with small neural networks, as there are 3^n masks, where n is the number of neurons
+    in the hidden layer. 
+    """
+    number_actions = 3
+
+    trajectories = regenerate_trajectories(args, verbose=True, logger=logger)
+    max_length = max([len(t.get_trajectory()) for t in trajectories.values()])
+
+    previous_loss = None
+    best_loss = None
+
+    loss_evaluator = LevinLossActorCritic(logger)
+
+    selected_masks = []
+    selected_options_problem = []
+    selected_options = []
+    selected_options_lengths = []
+
+    while previous_loss is None or best_loss < previous_loss:
+        previous_loss = best_loss
+
+        best_loss = None
+        best_option = None
+
+        for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
+            logger.info(f'Evaluating Problem: {problem}')
+            model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
+            env = get_single_environment(args, seed=seed)
+            agent = PPOAgent(envs=env, hidden_size=args.hidden_size, discrete_masks=True)
+            agent.load_state_dict(torch.load(model_path))
+
+            for num_step in range(2, max_length + 1):
+                mask, levin_loss = evaluate_all_masks_for_model(masks=selected_masks, 
+                                                                agents=selected_options + [agent], 
+                                                                num_steps=selected_options_lengths + [num_step],
+                                                                problem=problem, 
+                                                                trajectories=trajectories,
+                                                                loss_evaluator=loss_evaluator, 
+                                                                args=args, 
+                                                                number_actions=number_actions
+                                                                )
+
+                if best_loss is None or levin_loss < best_loss:
+                    best_loss = levin_loss
+                    best_option = agent
+                    best_option.to_option(mask, num_step, problem)
+                    logger.info(f'Best Loss so far: {mask}, {best_loss}, {problem}, {num_step} steps')
+
+        selected_masks.append(best_option.mask)
+        selected_options.append(best_option)
+        selected_options_problem.append(best_option.problem_id)
+        selected_options_lengths.append(best_option.option_size)
+        best_loss = loss_evaluator.compute_loss(selected_masks, selected_options, "", trajectories, number_actions, selected_options_lengths)
+
+        logger.info(f"Levin loss of the current set: {best_loss}")
+
+    # remove the last automaton added
+    selected_options = selected_options[:-1]
+
+    # printing selected options
+    logger.info("Selected options:")
+    for i in range(len(selected_options)):
+        logger.info(f"Option #{i}:\n" + 
+                    f"mask={selected_options[i].mask}\n" +
+                    f"size={selected_options[i].option_size}\n" +
+                    f"problem={selected_options[i].problem_id}")
+
+    save_options(options=selected_options, 
+                 trajectories=trajectories,
+                 args=args, 
+                 logger=logger)
+
+    utils.logger_flush(logger)
+
+    loss_evaluator.print_output_subpolicy_trajectory(selected_options, trajectories, logger=logger)
     utils.logger_flush(logger)
 
 
 def main():
+    args = process_args()
+
+    # Logger configurations
+    logger, args.log_path = utils.get_logger(args.exp_name, args.log_level, args.log_path)
+
+    run_name = f'{args.exp_id}_sd{args.seed}'
+    if args.track:
+        import wandb
+
+        wandb.init(
+            project=args.wandb_project_name,
+            group=args.exp_id,
+            job_type="eval",
+            entity=args.wandb_entity,
+            sync_tensorboard=False,
+            config=vars(args),
+            name=run_name,
+            monitor_gym=True,
+            save_code=True,
+        )
+
+    buffer = "Parameters:\n"
+    for key, value in vars(args).items():
+        buffer += (f"{key}: {value}\n")
+    logger.info(buffer)
+    utils.logger_flush(logger)
+
+    evaluate_all_masks_levin_loss(args, logger)
     # hill_climbing_mask_space_training_data()
-    whole_dec_options_training_data_levin_loss()
+    # whole_dec_options_training_data_levin_loss()
     # hill_climbing_all_segments()
     # learn_options()
+
+    logger.info(f"Run id: {run_name}")
+    logger.info(f"logs saved at {args.log_path}")
 
 
 if __name__ == "__main__":

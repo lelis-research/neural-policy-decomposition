@@ -161,6 +161,7 @@ def sparse_init(tensor, sparsity, type='uniform'):
     else:
         raise ValueError("Only tensors with 2 or 4 dimensions are supported")
 
+
 class PPOAgent(nn.Module):
     def __init__(self, envs, hidden_size=6, sparse_init=False, discrete_masks=True):
         super().__init__()

@@ -18,7 +18,7 @@ from environments.environments_minigrid import make_env_four_rooms
 
 @dataclass
 class Args:
-    exp_id: str = "extract_learnOptions_randomInit_discreteMasks_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_r400_envsd0,1,2"
+    exp_id: str = "extract_ppoDecOption_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h6_l10_r400_envsd0,1,2"
     """The ID of the finished experiment"""
     env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
     """the id of the environment corresponding to the trained agent
@@ -36,7 +36,7 @@ class Args:
     # hyperparameter arguments
     game_width: int = 5
     """the length of the combo/mini grid square"""
-    hidden_size: int = 64
+    hidden_size: int = 6
     """"""
     l1_lambda: float = 0
     """"""
@@ -107,7 +107,7 @@ class Args:
     """run seed"""
     track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "LMNOP"
+    wandb_project_name: str = "BASELINE0"
     """the wandb's project name"""
     wandb_entity: str = None
     """the entity (team) of wandb's project"""
@@ -119,7 +119,7 @@ class Args:
     """The logging level"""
 
 
-def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, seed: int, args: Args, logger: Logger):
+def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, env_seed: int, args: Args, logger: Logger):
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # TRY NOT TO MODIFY: seeding
@@ -128,7 +128,7 @@ def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, seed: int,
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
-    run_name = f"{test_exp_id}_sd{seed}"
+    run_name = f"{test_exp_id}_sd{args.seed}"
 
     if args.track:
         import wandb
@@ -138,7 +138,7 @@ def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, seed: int,
             group=test_exp_id,
             job_type="eval",
             entity=args.wandb_entity,
-            sync_tensorboard=True,
+            sync_tensorboard=False,
             config=vars(args),
             name=run_name,
             monitor_gym=True,
@@ -153,7 +153,7 @@ def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, seed: int,
     
     if args.test_env_id == "MiniGrid-FourRooms-v0":
         envs = gym.vector.SyncVectorEnv(
-        [make_env_four_rooms(view_size=args.game_width, seed=seed, options=options) 
+        [make_env_four_rooms(view_size=args.game_width, seed=env_seed, options=options) 
          for _ in range(args.num_envs)],
     )
     else:
@@ -181,18 +181,19 @@ def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, seed: int,
     logger.info(f"Reporting tensorboard summary writer on outputs/tensorboard/runs/{run_name}")
 
     train_ppo(envs=envs, 
-              seed=seed, 
+              seed=env_seed, 
               args=args, 
               model_file_name=model_path, 
               device=device, 
               logger=logger, 
               writer=writer,
               sparse_init=False)
+    wandb.finish()
 
 
 def main(args: Args):
 
-    logger = utils.get_logger("testing_by_training_logger", args.log_level, args.log_path, suffix="test_by_training")
+    logger, args.log_path = utils.get_logger("testing_by_training_logger", args.log_level, args.log_path)
 
     options, _ = load_options(args, logger)
 
@@ -204,11 +205,21 @@ def main(args: Args):
     clip_coef = args.clip_coef
     ent_coef = args.ent_coef
     for i, (problem, seed) in enumerate(zip(args.test_problems, args.test_seeds)):
-        logger.info(f"Testing by training on {problem}")
+        logger.info(f"Testing by training on {problem}, env_seed={seed}")
+        if seed == 8:
+            args.total_timesteps = 1_000_000
+        else:
+            args.total_timesteps = 200_000
+
+        args.batch_size = int(args.num_envs * args.num_steps)
+        args.minibatch_size = int(args.batch_size // args.num_minibatches)
+        args.num_iterations = args.total_timesteps // args.batch_size
         args.learning_rate = lrs[i]
         args.clip_coef = clip_coef[i]
         args.ent_coef = ent_coef[i]
-        test_exp_id = f'{args.test_exp_id}_lr{args.learning_rate}_clip{args.clip_coef}_ent{args.ent_coef}'
+        args.test_seed = seed
+        args.test_problem = problem
+        test_exp_id = f'{args.test_exp_id}_lr{args.learning_rate}_clip{args.clip_coef}_ent{args.ent_coef}_envsd{seed}'
         train_ppo_with_options(options, test_exp_id, seed, args, logger)
         utils.logger_flush(logger)
 

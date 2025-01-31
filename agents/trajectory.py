@@ -1,4 +1,5 @@
 import copy
+import torch
 
 class Trajectory:
     def __init__(self):
@@ -6,6 +7,8 @@ class Trajectory:
         self.logits = []
 
     def add_pair(self, state, action, logits=None, detach=False):
+        if isinstance(action, torch.Tensor):
+            action = action.item()
         self._sequence.append((state, action))
         if logits is not None:
             self.logits.append(copy.deepcopy(logits.cpu().detach()) if detach else logits)

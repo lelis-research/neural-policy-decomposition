@@ -22,14 +22,14 @@ def get_ppo_model_file_name(tag="", **kwargs):
         # f'-l1lambda{kwargs["l1_lambda"]}' + \
     return file_name
 
-def get_logger(logger_name, log_level, log_path, suffix=""):
+def get_logger(logger_name, log_level, log_path):
     # Logger configurations
     os.makedirs(log_path, exist_ok=True)
     
     logger = logging.getLogger(logger_name)
     logger.setLevel(log_level.upper())
     log_path += "/" # Making sure the file and dir are separated
-    log_path += suffix
+    log_path += logger_name
     log_path = f"{log_path}_{str(int(time.time()))}.log"
     handler = logging.FileHandler(log_path, mode='w')
     console_handler = logging.StreamHandler(sys.stdout)
@@ -40,7 +40,7 @@ def get_logger(logger_name, log_level, log_path, suffix=""):
     console_handler.setFormatter(console_format)
     logger.addHandler(handler)
     logger.addHandler(console_handler)
-    return logger
+    return logger, log_path
 
 def logger_flush(logger):
     for handler in logger.handlers:

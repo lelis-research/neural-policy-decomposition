@@ -61,12 +61,36 @@ def train_ppo(envs: gym.vector.SyncVectorEnv, seed, args, model_file_name, devic
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
 
+
+            # if "final_info" in infos:
+            #     for info in infos["final_info"]:
+            #         if info and "episode" in info:
+            #             logger.info(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+            #             # writer.add_scalar("Charts/episodic_return", info["episode"]["r"], global_step)
+            #             # writer.add_scalar("Charts/episodic_length", info["episode"]["l"], global_step)
+            #             wandb.log({"Charts/episodic_return": info["episode"]["r"], 
+            #                        "Charts/episodic_length": info["episode"]["l"]}, step=global_step)
             if "final_info" in infos:
+                returns = []
+                lengths = []
                 for info in infos["final_info"]:
-                    if info and "episode" in info:
-                        logger.info(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-                        writer.add_scalar("Charts/episodic_return", info["episode"]["r"], global_step)
-                        writer.add_scalar("Charts/episodic_length", info["episode"]["l"], global_step)
+                    if info and "episode" in info:  # Check if the episode data is available
+                        returns.append(info["episode"]["r"])  # Collect episodic returns
+                        lengths.append(info["episode"]["l"])  # Collect episodic lengths
+
+                # Log the average episodic return and length, if any episodes ended
+                if returns:
+                    avg_return = sum(returns) / len(returns)
+                    avg_length = sum(lengths) / len(lengths)
+                    wandb.log({
+                        "Charts/episodic_return_avg": avg_return, 
+                        "Charts/episodic_length_avg": avg_length
+                    }, step=global_step)
+                    if writer:
+                        writer.add_scalar("Charts/episodic_return", avg_return, global_step)
+                        writer.add_scalar("Charts/episodic_length", avg_length, global_step)
+                    logger.info(f"global_step={global_step}, episodic_return={avg_return}, episodic_length={avg_length}")
+            
 
         # bootstrap value if not done
         with torch.no_grad():
@@ -155,26 +179,40 @@ def train_ppo(envs: gym.vector.SyncVectorEnv, seed, args, model_file_name, devic
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
 
-        # TRY NOT TO MODIFY: record rewards for plotting purposes
-        writer.add_scalar("Charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
-        writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
-        writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
-        writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
-        writer.add_scalar("losses/old_approx_kl", old_approx_kl.item(), global_step)
-        writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
-        writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
-        writer.add_scalar("losses/l1_reg", l1_reg.item(), global_step)
-        writer.add_scalar("losses/explained_variance", explained_var, global_step)
-        logger.info(f"SPS: {int(global_step / (time.time() - start_time))}")
-        writer.add_scalar("Charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+        if writer:
+            # TRY NOT TO MODIFY: record rewards for plotting purposes
+            writer.add_scalar("Charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
+            writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
+            writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
+            writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
+            writer.add_scalar("losses/old_approx_kl", old_approx_kl.item(), global_step)
+            writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
+            writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
+            writer.add_scalar("losses/l1_reg", l1_reg.item(), global_step)
+            writer.add_scalar("losses/explained_variance", explained_var, global_step)
+            writer.add_scalar("Charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+
+        wandb.log({
+            "Charts/learning_rate": optimizer.param_groups[0]["lr"],
+            "losses/value_loss": v_loss.item(),
+            "losses/policy_loss": pg_loss.item(),
+            "losses/entropy": entropy_loss.item(),
+            "losses/old_approx_kl": old_approx_kl.item(),
+            "losses/approx_kl": approx_kl.item(),
+            "losses/clipfrac": np.mean(clipfracs),
+            "losses/l1_reg": l1_reg.item(),
+            "losses/explained_variance": explained_var,
+            "Charts/SPS": int(global_step / (time.time() - start_time))
+        }, step=global_step)
         
         if iteration % 1000 == 0:
             logger.info(f"Global steps: {global_step}")
+            logger.info(f"SPS: {int(global_step / (time.time() - start_time))}")
             utils.logger_flush(logger)
 
     envs.close()
-    writer.close()
+    # writer.close()
     os.makedirs(os.path.dirname(model_file_name), exist_ok=True)
-    torch.save(agent.state_dict(), model_file_name)
+    torch.save(agent.state_dict(), model_file_name) # overrides the file if already exists
     logger.info(f"Saved on {model_file_name}")
 

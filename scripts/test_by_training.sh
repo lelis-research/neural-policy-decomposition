@@ -11,4 +11,4 @@ export FLEXIBLAS=blis2
 
 source envs/venv/bin/activate # Assuming we have all our environments in  `../envs/`
 
-OMP_NUM_THREADS=1 python -m pipelines.test_by_training --cpus=$SLURM_CPUS_PER_TASK --seed=$SLURM_ARRAY_TASK_ID
+OMP_NUM_THREADS=1 python -m pipelines.test_by_training --seed=$SLURM_ARRAY_TASK_ID
