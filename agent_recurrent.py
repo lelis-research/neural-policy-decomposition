@@ -41,10 +41,7 @@ def _l1_norm(model, lambda_l1):
     return lambda_l1 * l1_loss
 
 def train_model(problem="test", option_dir=None):
-    if problem == "test":
-        args = tyro.cli(ArgsTest)
-    else:
-        args = tyro.cli(Args)
+    args = tyro.cli(Args)
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
@@ -92,7 +89,7 @@ def train_model(problem="test", option_dir=None):
     if args.rnn_type == 'lstm':
         agent = LstmAgent(envs, args.hidden_size).to(device)
     elif args.rnn_type == 'gru':
-        agent = GruAgent(envs, args.hidden_size, feature_extractor=True, option_len=len(options), quantized=args.quantized).to(device)
+        agent = GruAgent(envs, args.hidden_size, feature_extractor=False, option_len=len(options), quantized=args.quantized).to(device)
     else:
         print("Unknown type of model. Please choose between either LSTM or GRU.")
         exit()
@@ -163,7 +160,7 @@ def train_model(problem="test", option_dir=None):
 
             # TRY NOT TO MODIFY: execute the game and log data.
             next_obs, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
-            print(infos)
+            # print(infos)
             next_done = np.logical_or(terminations, truncations)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
@@ -314,7 +311,7 @@ def train_model(problem="test", option_dir=None):
     writer.close()
     if not os.path.exists(f'models/{args.seed}'):
         os.mkdir(f'models/{args.seed}')
-    torch.save(agent.state_dict(), f'models/{args.seed}/{problem}-{use_options}-50-0001-not-quantized.pt')
+    torch.save(agent.state_dict(), f'models/{args.seed}/{problem}-{use_options}.pt')
 
 if __name__ == "__main__":
     # train_model(option_dir="options/selected_options.pkl")

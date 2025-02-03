@@ -24,7 +24,7 @@ device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
 import numpy as np
 def make_env(problem, options=None):
     def thunk():
-        env = ComboGym(rows=5, columns=5, problem=problem, options=options, random_initial=True)
+        env = ComboGym(rows=3, columns=3, problem=problem, options=options, random_initial=True)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
@@ -143,7 +143,7 @@ def _rollout(agent, env):
     _h = None
     return traj
 
-def extract_options(seed=1):
+def extract_options(seed=1, width=3):
     """
     This is the function to perform the selection of sub-automata from the automaton extract from recurrent models.
 
@@ -162,7 +162,7 @@ def extract_options(seed=1):
 
         # env = Game(5, 5, problems[i])
         env = gym.vector.SyncVectorEnv(
-        [make_env(problems[i])],
+        [make_env(problems[i], width=width)],
     )
         rnn = GruAgent(env,64, option_len=0, greedy=True)
         rnn.load_state_dict(torch.load(f'models/{seed}/{problems[i]}.pt'))
@@ -282,8 +282,10 @@ def extract_options(seed=1):
 
     # remove the last automaton added
     selected_automata = selected_automata[0:len(selected_automata) - 1]
-    if not os.path.exists(f"options/{seed}/selected_options.pkl"):
-        os.mkdir(f"options/{seed}/selected_options.pkl")
+    try:
+        os.mkdir(f"options/{seed}")
+    except:
+        pass
     with open(f"options/{seed}/selected_options.pkl", "wb") as file:
         pickle.dump(automata, file)
 

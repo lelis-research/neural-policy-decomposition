@@ -449,7 +449,7 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
     envs.close()
     writer.close()
 
-    torch.save(agent.state_dict(), f'models/{seed}/{problem}-{use_options}-50-positive-not-quantized.pt')
+    torch.save(agent.state_dict(), f'models/{seed}/{problem}-{use_options}-positive-only.pt')
 
 
 if __name__ == "__main__":

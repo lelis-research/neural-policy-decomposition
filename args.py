@@ -5,7 +5,7 @@ from dataclasses import dataclass
 class Args:
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
     """the name of this experiment"""
-    seed: int = 1
+    seed: int = 0
     """seed of the experiment"""
     torch_deterministic: bool = True
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
@@ -13,7 +13,7 @@ class Args:
     """if toggled, cuda will be enabled by default"""
     track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "PPOwithRandomInitial5x5Test"
+    wandb_project_name: str = "PPOwithRandomInitial3x3"
     """the wandb's project name"""
     wandb_entity: str = None
     """the entity (team) of wandb's project"""
@@ -24,7 +24,7 @@ class Args:
     # env_id: str = "BreakoutNoFrameskip-v4"
     env_id: str = "ComboGrid-v0"
     """the id of the environment"""
-    total_timesteps: int = 20000000
+    total_timesteps: int = 7000000
     """total timesteps of the experiments"""
     learning_rate: float = 2.5e-4
     """the learning rate of the optimizer"""
@@ -32,7 +32,7 @@ class Args:
     """the learning rate of the optimizer for value network"""
     num_envs: int = 8
     """the number of parallel game environments"""
-    num_steps: int = 90
+    num_steps: int = 60
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: bool = True
     """Toggle learning rate annealing for policy and value networks"""
@@ -70,9 +70,9 @@ class Args:
     "Problem"
     fine_tune: bool = False
     "toggles fine tuning mode"
-    episode_length: int = 30
+    episode_length: int = 20
     "maximum episode length"
-    game_width: int = 5
+    game_width: int = 3
     "the width of the grid"
     visitation_bonus: bool = True
     "toggles using visitation bonus in calculating reward"

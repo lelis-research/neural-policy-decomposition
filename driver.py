@@ -1,5 +1,6 @@
 import multiprocessing
 from agent_recurrent import train_model
+from agent_recurrent_positive import train_model_positive
 import tyro
 from args import Args
 from model_recurrent import GruAgent
@@ -69,9 +70,12 @@ def generate_trajectories(args, problem):
                     counter += 1
                 if len(traj.get_trajectory()) > 0 and env.is_over():
                     trajectories.append(traj)
-        if not os.path.exists(f'trajectories/{args.seed}'):
+        # if not os.path.exists(f'trajectories/{args.seed}'):
+        try:
             os.mkdir(f'trajectories/{args.seed}')
-        print(trajectories)
+        except:
+            pass
+        # print(trajectories)
         with open (f'trajectories/{args.seed}/{problem}.pkl', 'wb') as f:
             pickle.dump(trajectories, f)
 
@@ -86,17 +90,18 @@ if __name__ =="__main__":
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
     
-    with multiprocessing.Pool(processes=ncpus) as pool:  # Adjust the number of processes here
-        pool.map(train_model, problems)
+    # with multiprocessing.Pool(processes=ncpus) as pool:  # Adjust the number of processes here
+    #     pool.map(train_model, problems)
 
     #generate trajectories
-    with multiprocessing.Pool(processes=ncpus) as pool:  # Adjust the number of processes here
-        pool.starmap(generate_trajectories, [(args, p) for p in problems])
+    # with multiprocessing.Pool(processes=ncpus) as pool:  # Adjust the number of processes here
+    #     pool.starmap(generate_trajectories, [(args, p) for p in problems])
 
-    #select options
-    extract_options(args.seed)
+    # #select options
+    # extract_options(args.seed, args.game_width)
 
     #TODO train test model with and without options
     options = [None, f"options/{args.seed}/selected_options.pkl"]
     with multiprocessing.Pool(processes=ncpus) as pool:  # Adjust the number of processes here
-        pool.starmap(train_model, [("test", o, args.seed) for o in options])
+        pool.starmap(train_model_positive, [("test", o, args.seed) for o in options])
+        pool.starmap(train_model, [("test", o) for o in options])
