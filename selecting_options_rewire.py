@@ -22,9 +22,9 @@ device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
 
 
 import numpy as np
-def make_env(problem, options=None):
+def make_env(problem, width=3, options=None):
     def thunk():
-        env = ComboGym(rows=3, columns=3, problem=problem, options=options, random_initial=True)
+        env = ComboGym(rows=width, columns=width, problem=problem, options=options, random_initial=True)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
@@ -288,4 +288,3 @@ def extract_options(seed=1, width=3):
         pass
     with open(f"options/{seed}/selected_options.pkl", "wb") as file:
         pickle.dump(automata, file)
-

@@ -65,7 +65,7 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
     )
     options = []
     if use_options == 1:
-        with open("options/selected_options.pkl", "rb") as file:
+        with open(option_dir, "rb") as file:
             options = pickle.load(file)
 
     # TRY NOT TO MODIFY: seeding
@@ -453,5 +453,5 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
 
 
 if __name__ == "__main__":
-    train_model_positive(option_dir="options/selected_options.pkl")
+    train_model_positive(option_dir="options/selected_options_width_3.pkl")
     # train_model(option_dir=None)
