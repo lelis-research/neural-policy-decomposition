@@ -103,7 +103,7 @@ class MiniGridWrap(gym.Env):
         ]
         self.goal_position = (
             int(self.goal_position[0] / self.env.unwrapped.height),
-            self.goal_position[0] % self.env.unwrapped.width,
+            self.goal_position[0] % self.env.unwrapped.height,
         )
         if init_loc and init_dir:
             self.env.unwrapped.agent_pos = np.array(init_loc)

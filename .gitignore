@@ -25,3 +25,5 @@ training/__pycache__
 older_logs
 **.pyc
 wandb
+.vscode
+*/.ipynb_checkpoints

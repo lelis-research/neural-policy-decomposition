@@ -36,7 +36,7 @@ class Args:
 
 def main(args):
     log_path = os.path.join(args.log_path, args.exp_id)
-    logger = utils.get_logger("whole_grid_testing_logger", args.log_level, log_path, "whole_grid_testing")
+    logger = utils.get_logger("whole_grid_testing_logger", args.log_level, log_path)
     
     loss = LogitsLossActorCritic(logger)
 
