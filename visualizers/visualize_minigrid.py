@@ -145,8 +145,10 @@ def visualize_envs(args):
 def main(args):
     # visualize_trained_agents(args)
     # args.seeds = (0, 1, 2)
-    args.seeds = range(1, 25)
-    args.env_id = "MiniGrid-FourRooms-v0"
+    # args.seeds = range(1, 25)
+    args.seeds = [0]
+    # args.env_id = "MiniGrid-FourRooms-v0"
+    args.env_id = "MiniGrid-SimpleCrossingS9N1-v0"
     # try_on_other_environments(args)
     visualize_envs(args)
     # visualize_on_four_rooms(args)

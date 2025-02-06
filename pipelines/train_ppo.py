@@ -29,7 +29,9 @@ class Args:
     env_seeds: Union[List[int], str] = (0,1,2) # SimpleCrossing
     # env_seeds: Union[List[int], str] = (41,51,8) # FourRooms
     # env_seeds: Union[List[int], str] = (8,) # FourRooms
-    """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
+    """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'.
+    This determines the exact environments that will be separately used for training.
+    """
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
     torch_deterministic: bool = True
@@ -129,7 +131,7 @@ def main(args: Args):
     
     log_path = os.path.join(args.log_path, args.exp_id, f"seed={args.seed}", "train_ppo")
 
-    logger = utils.get_logger('ppo_trainer_logger_' + str(args.env_seed) + "_" + args.exp_name, args.log_level, log_path)
+    logger, _ = utils.get_logger('ppo_trainer_logger_' + str(args.env_seed) + "_" + args.exp_name, args.log_level, log_path)
 
     logger.info(f"\n\nExperiment: {args.exp_id}\n\n")
 
@@ -230,11 +232,6 @@ if __name__ == "__main__":
     exp_id = args.exp_id
     for i in range(len(args.env_seeds)):
         args.env_seed = args.env_seeds[i]
-        # if args.env_seed == 8:
-        #     args.total_timesteps = 1_000_000
-        # else:
-        #     args.total_timesteps = 200_000
-
         args.batch_size = int(args.num_envs * args.num_steps)
         args.minibatch_size = int(args.batch_size // args.num_minibatches)
         args.num_iterations = args.total_timesteps // args.batch_size
