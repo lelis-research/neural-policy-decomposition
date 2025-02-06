@@ -144,7 +144,7 @@ class GruAgent(nn.Module):
                 nn.Tanh(),
                 layer_init(nn.Linear(64, 64)),
                 nn.Tanh(),
-                layer_init(nn.Linear(64, envs.single_action_space.n + option_len)),
+                layer_init(nn.Linear(64, envs.single_action_space.n + option_len), std=np.sqrt(2)*0.01),
             )
 
             self.critic = nn.Sequential(

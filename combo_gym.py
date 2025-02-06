@@ -33,7 +33,16 @@ class ComboGym(gym.Env):
         #reward is 0 in goal state and -1 everywhere else
         #add exploration bonus to reward to encourage agent to visit less visited states
         if action > 2:
-            is_applicable, actions = self._options[action - len(self._game.get_actions())].transition(self._game, apply_actions=False)
+            # is_applicable, actions = self._options[action - len(self._game.get_actions())].transition(self._game, apply_actions=False)
+            is_applicable = True
+            if action == 3:
+                actions = [0, 0, 1] #UP
+            elif action == 4:
+                actions = [0, 1, 2] #DOWN
+            elif action == 5:
+                actions = [2, 1, 0] #LEFT
+            elif action == 6:
+                actions = [1, 0, 2] #RIGHT
             if is_applicable:
                 reward = 0
                 for a in actions:
@@ -42,13 +51,13 @@ class ComboGym(gym.Env):
                     if not self._game.is_over():
                         if self._visitation_bonus:
                             if not reach_goal:
-                                reward += -1 + self._game.get_exploration_bonus()
+                                reward += 0 + self._game.get_exploration_bonus()
                             else:
                                 reward += 1 + self._game.get_exploration_bonus()
                                 self.goals_reached += 1
                         else:
                             if not reach_goal:
-                                reward += -1
+                                reward += 0
                             else:
                                 reward += 1
                                 self.goals_reached += 1
@@ -66,13 +75,13 @@ class ComboGym(gym.Env):
             self.n_steps += 1
             if self._visitation_bonus:
                 if not reach_goal:
-                    reward += -1 + self._game.get_exploration_bonus()
+                    reward += 0 + self._game.get_exploration_bonus()
                 else:
                     reward += 1 + self._game.get_exploration_bonus()
                     self.goals_reached += 1
             else:
                 if not reach_goal:
-                    reward += -1
+                    reward += 0
                 else:
                     reward += 1
                     self.goals_reached += 1

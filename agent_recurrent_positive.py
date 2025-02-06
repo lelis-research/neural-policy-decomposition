@@ -65,8 +65,9 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
     )
     options = []
     if use_options == 1:
-        with open(option_dir, "rb") as file:
-            options = pickle.load(file)
+        # with open(option_dir, "rb") as file:
+        #     options = pickle.load(file)
+        options = [3, 4, 5, 6]
 
     # TRY NOT TO MODIFY: seeding
     random.seed(seed)
@@ -149,6 +150,7 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
             else:   # LSTM or GRU
                 lr_value = frac * args.value_learning_rate
                 lr_other = frac * args.learning_rate
+                lr_value = lr_other
                 for param_group in optimizer.param_groups:
                     if param_group.get('name') == 'value':
                         param_group['lr'] = lr_value
@@ -449,9 +451,9 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
     envs.close()
     writer.close()
 
-    torch.save(agent.state_dict(), f'models/{seed}/{problem}-{use_options}-positive-only.pt')
+    torch.save(agent.state_dict(), f'models/{seed}/{problem}-lr{args.learning_rate}-num_step{args.num_steps}-clip_coef{args.clip_coef}-ent_coef{args.ent_coef}-vf_coef{args.vf_coef}-max_grad{args.max_grad_norm}.pt')
 
 
 if __name__ == "__main__":
-    train_model_positive(option_dir="options/selected_options_width_3.pkl")
-    # train_model(option_dir=None)
+    train_model_positive(option_dir="options/selected_options_width_3.pkl", seed=1)
+    # train_model_positive(option_dir=None)

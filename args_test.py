@@ -5,7 +5,7 @@ from dataclasses import dataclass
 class ArgsTest:
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
     """the name of this experiment"""
-    seed: int = 0
+    seed: int = 1
     """seed of the experiment"""
     torch_deterministic: bool = True
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
@@ -13,7 +13,7 @@ class ArgsTest:
     """if toggled, cuda will be enabled by default"""
     track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "PPOwithRandomInitial3x3"
+    wandb_project_name: str = "PPOwithRandomInitial5x5"
     """the wandb's project name"""
     wandb_entity: str = None
     """the entity (team) of wandb's project"""
@@ -24,7 +24,7 @@ class ArgsTest:
     # env_id: str = "BreakoutNoFrameskip-v4"
     env_id: str = "ComboGrid-v0"
     """the id of the environment"""
-    total_timesteps: int = 7000000
+    total_timesteps: int = 3000000
     """total timesteps of the experiments"""
     learning_rate: float = 8e-5
     """the learning rate of the optimizer"""
@@ -32,7 +32,7 @@ class ArgsTest:
     """the learning rate of the optimizer for value network"""
     num_envs: int = 1
     """the number of parallel game environments"""
-    num_steps: int = 30
+    num_steps: int = 50
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: bool = True
     """Toggle learning rate annealing for policy and value networks"""
@@ -42,7 +42,7 @@ class ArgsTest:
     """the lambda for the general advantage estimation"""
     num_minibatches: int = 1
     """the number of mini-batches"""
-    update_epochs: int = 8
+    update_epochs: int = 6
     """the K epochs to update the policy"""
     norm_adv: bool = True
     """Toggles advantages normalization"""
@@ -70,9 +70,9 @@ class ArgsTest:
     "Problem"
     fine_tune: bool = False
     "toggles fine tuning mode"
-    episode_length: int = 30
+    episode_length: int = 50
     "maximum episode length"
-    game_width: int = 3
+    game_width: int = 5
     "the width of the grid"
     visitation_bonus: bool = True
     "toggles using visitation bonus in calculating reward"
