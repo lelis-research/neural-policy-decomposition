@@ -3,7 +3,7 @@ import numpy as np
 from combo import Game
 
 class ComboGym(gym.Env):
-    def __init__(self, rows=3, columns=3, problem="TL-BR", options=None, partial_observability=True, random_initial=False, episode_length=None, visitation_bonus=True):
+    def __init__(self, rows=3, columns=3, problem="TL-BR", options=None, partial_observability=True, random_initial=False, episode_length=None, visitation_bonus=1):
         self._game = Game(rows, columns, problem, partial_observability, random_initial, visitation_bonus)
         self._rows = rows
         self._columns = columns

@@ -5,7 +5,7 @@ import gc
 import copy
 
 class Game:
-    def __init__(self, rows, columns, problem, partial_observability=True, multiple_initial_states=False, visitation_bonus=False):
+    def __init__(self, rows, columns, problem, partial_observability=True, multiple_initial_states=False, visitation_bonus=0):
         self._rows = rows
         self._columns = columns
         self._matrix_unit = np.zeros((rows, columns))

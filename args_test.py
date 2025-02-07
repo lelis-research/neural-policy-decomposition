@@ -32,9 +32,9 @@ class ArgsTest:
     """the learning rate of the optimizer for value network"""
     num_envs: int = 1
     """the number of parallel game environments"""
-    num_steps: int = 50
+    num_steps: int = 120
     """the number of steps to run in each environment per policy rollout"""
-    anneal_lr: bool = True
+    anneal_lr: int = 1
     """Toggle learning rate annealing for policy and value networks"""
     gamma: float = 0.99
     """the discount factor gamma"""
@@ -48,7 +48,7 @@ class ArgsTest:
     """Toggles advantages normalization"""
     clip_coef: float = 0.3
     """the surrogate clipping coefficient"""
-    clip_vloss: bool = True
+    clip_vloss: int = 1
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
     ent_coef: float = 0.07
     """coefficient of the entropy"""
@@ -70,11 +70,11 @@ class ArgsTest:
     "Problem"
     fine_tune: bool = False
     "toggles fine tuning mode"
-    episode_length: int = 50
+    episode_length: int = 60
     "maximum episode length"
     game_width: int = 5
     "the width of the grid"
-    visitation_bonus: bool = True
+    visitation_bonus: int = 1
     "toggles using visitation bonus in calculating reward"
     use_options: int = 0
     "set to 0 for not using options, and 1 for using options when training"

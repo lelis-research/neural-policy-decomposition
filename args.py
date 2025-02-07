@@ -34,7 +34,7 @@ class Args:
     """the number of parallel game environments"""
     num_steps: int = 60
     """the number of steps to run in each environment per policy rollout"""
-    anneal_lr: bool = True
+    anneal_lr: int = 1
     """Toggle learning rate annealing for policy and value networks"""
     gamma: float = 0.99
     """the discount factor gamma"""
@@ -48,7 +48,7 @@ class Args:
     """Toggles advantages normalization"""
     clip_coef: float = 0.3
     """the surrogate clipping coefficient"""
-    clip_vloss: bool = True
+    clip_vloss: int = 1
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
     ent_coef: float = 0.07
     """coefficient of the entropy"""
@@ -74,11 +74,11 @@ class Args:
     "maximum episode length"
     game_width: int = 3
     "the width of the grid"
-    visitation_bonus: bool = True
+    visitation_bonus: int = 1
     "toggles using visitation bonus in calculating reward"
     use_options: int = 0
     "set to 0 for not using options, and 1 for using options when training"
-    quantized: int = 1
+    quantized: int = 0
     "set to 0 for models without quantized hidden states, and 1 models with quantized hidden states"
 
     # to be filled in runtime

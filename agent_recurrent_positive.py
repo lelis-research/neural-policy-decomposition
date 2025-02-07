@@ -17,7 +17,7 @@ from args_test import ArgsTest
 from model_recurrent import LstmAgent, GruAgent
 
     
-def make_env(problem, episode_length=None, width=3, visitation_bonus=True, options=[]):
+def make_env(problem, episode_length=None, width=3, visitation_bonus=1, options=[]):
     def thunk():
         if len(options) > 0:
             env = ComboGym(rows=width, columns=width, problem=problem, random_initial=False, episode_length=episode_length, options=options, visitation_bonus=visitation_bonus)
@@ -141,7 +141,7 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
             initial_rnn_state = (next_rnn_state[0].clone(), next_rnn_state[1].clone())
 
         # Annealing the rate if instructed to do so.
-        if args.anneal_lr:
+        if args.anneal_lr == 1:
             # frac = 1.0 - (iteration - 1.0) / args.num_iterations
             frac = 1.0 - (global_step - 1.0) / args.total_timesteps
             if args.ppo_type == "original":
@@ -150,7 +150,6 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
             else:   # LSTM or GRU
                 lr_value = frac * args.value_learning_rate
                 lr_other = frac * args.learning_rate
-                lr_value = lr_other
                 for param_group in optimizer.param_groups:
                     if param_group.get('name') == 'value':
                         param_group['lr'] = lr_value
@@ -324,7 +323,7 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
 
                     # Value loss
                     newvalue = newvalue.view(-1)
-                    if args.clip_vloss:
+                    if args.clip_vloss == 1:
                         v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
                         v_clipped = b_values[mb_inds] + torch.clamp(
                             newvalue - b_values[mb_inds],
@@ -415,7 +414,7 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
 
                     # Value loss
                     newvalue = newvalue.view(-1)
-                    if args.clip_vloss:
+                    if args.clip_vloss == 1:
                         v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
                         v_clipped = b_values[mb_inds] + torch.clamp(
                             newvalue - b_values[mb_inds],
@@ -447,7 +446,7 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
         # print("goals reached ", episodic_goal_avg)
         print(episodic_r_avg, episodic_l_avg, episodic_goal_avg)
         if args.track:
-                wandb.log({"value_loss": v_loss.item(), "policy_loss":pg_loss.item(),"entropy":entropy_loss.item(), "lr":lr_other, "valuelr":lr_value, "clipfac":np.mean(clipfracs), "old_approx_kl": old_approx_kl.item(), "approx_kl": approx_kl.item(), "explained_variance": explained_var, "episodic_return":episodic_r_avg ,"episodic_goals_reached":episodic_goal_avg, "episodic_length": episodic_l_avg})
+                wandb.log({"value_loss": v_loss.item(), "policy_loss":pg_loss.item(),"entropy":entropy_loss.item(), "lr": optimizer.param_groups[0]["lr"], "clipfac":np.mean(clipfracs), "old_approx_kl": old_approx_kl.item(), "approx_kl": approx_kl.item(), "explained_variance": explained_var, "episodic_return":episodic_r_avg ,"episodic_goals_reached":episodic_goal_avg, "episodic_length": episodic_l_avg})
     envs.close()
     writer.close()
 

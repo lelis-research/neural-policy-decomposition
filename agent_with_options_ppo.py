@@ -113,7 +113,7 @@ if __name__ == "__main__":
                 initial_rnn_state = (next_rnn_state[0].clone(), next_rnn_state[1].clone())
             
             # Annealing the rate if instructed to do so.
-            if args.anneal_lr:
+            if args.anneal_lr == 1:
                 frac = 1.0 - (iteration - 1.0) / args.num_iterations
                 lrnow = frac * args.learning_rate
                 optimizer.param_groups[0]["lr"] = lrnow
@@ -229,7 +229,7 @@ if __name__ == "__main__":
 
                     # Value loss
                     newvalue = newvalue.view(-1)
-                    if args.clip_vloss:
+                    if args.clip_vloss == 1:
                         v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
                         v_clipped = b_values[mb_inds] + torch.clamp(
                             newvalue - b_values[mb_inds],

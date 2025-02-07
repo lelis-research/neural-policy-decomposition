@@ -21,7 +21,7 @@ from model_recurrent import LstmAgent, GruAgent
 print("Importing libs completed")
 
     
-def make_env(problem, episode_length=None, width=3, visitation_bonus=True, options=[]):
+def make_env(problem, episode_length=None, width=3, visitation_bonus=1, options=[]):
     def thunk():
         if len(options) > 0:
             env = ComboGym(rows=width, columns=width, problem=problem, random_initial=False, episode_length=episode_length, options=options, visitation_bonus=visitation_bonus)
@@ -41,7 +41,7 @@ def _l1_norm(model, lambda_l1):
     return lambda_l1 * l1_loss
 
 def train_model(problem="test", option_dir=None):
-    args = tyro.cli(Args)
+    args = tyro.cli(ArgsTest)
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
@@ -71,6 +71,7 @@ def train_model(problem="test", option_dir=None):
     if use_options == 1:
         with open(option_dir, "rb") as file:
             options = pickle.load(file)
+    options = [ 3, 4, 5, 6]
 
     # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
@@ -130,7 +131,7 @@ def train_model(problem="test", option_dir=None):
         elif args.rnn_type == 'lstm':
             initial_rnn_state = (next_rnn_state[0].clone(), next_rnn_state[1].clone())
         
-        if args.anneal_lr:
+        if args.anneal_lr == 1:
             frac = 1.0 - (iteration - 1.0) / args.num_iterations
             lr_value = frac * args.value_learning_rate
             lr_other = frac * args.learning_rate
@@ -263,7 +264,7 @@ def train_model(problem="test", option_dir=None):
 
                 # Value loss
                 newvalue = newvalue.view(-1)
-                if args.clip_vloss:
+                if args.clip_vloss == 1:
                     v_loss_unclipped = (newvalue - b_returns[mb_inds]) ** 2
                     v_clipped = b_values[mb_inds] + torch.clamp(
                         newvalue - b_values[mb_inds],
@@ -306,7 +307,7 @@ def train_model(problem="test", option_dir=None):
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
         if args.track:
-            wandb.log({"value_loss": v_loss.item(), "policy_loss":pg_loss.item(),"entropy":entropy_loss.item(), "lr":lr_other, "valuelr":lr_value, "clipfac":np.mean(clipfracs), "old_approx_kl": old_approx_kl.item(), "approx_kl": approx_kl.item(), "explained_variance": explained_var, "episodic_return":episodic_r_avg ,"episodic_goals_reached":episodic_goal_avg, "episodic_length": episodic_l_avg})
+            wandb.log({"value_loss": v_loss.item(), "policy_loss":pg_loss.item(),"entropy":entropy_loss.item(), "lr": optimizer.param_groups[0]["lr"],  "clipfac":np.mean(clipfracs), "old_approx_kl": old_approx_kl.item(), "approx_kl": approx_kl.item(), "explained_variance": explained_var, "episodic_return":episodic_r_avg ,"episodic_goals_reached":episodic_goal_avg, "episodic_length": episodic_l_avg})
     envs.close()
     writer.close()
     if not os.path.exists(f'models/{args.seed}'):
@@ -314,5 +315,5 @@ def train_model(problem="test", option_dir=None):
     torch.save(agent.state_dict(), f'models/{args.seed}/{problem}-{use_options}.pt')
 
 if __name__ == "__main__":
-    # train_model(option_dir="options/selected_options.pkl")
-    train_model(option_dir=None)
+    train_model(option_dir="options/selected_options_width_5.pkl")
+    # train_model(option_dir=None)
