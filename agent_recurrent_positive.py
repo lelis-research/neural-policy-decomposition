@@ -42,9 +42,10 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
     use_options = 0
+    seed = args.seed
     if option_dir is not None:
         use_options = 1
-    run_name = f"{args.rnn_type}-{args.hidden_size}-{args.episode_length}-{args.num_steps}-{args.problem}-{seed}-{use_options}-quantized"
+    run_name = f"{problem}-lr{args.learning_rate}-num_step{args.num_steps}-clip_coef{args.clip_coef}-ent_coef{args.ent_coef}-epoch{args.update_epochs}-vloss{args.clip_vloss}-visit{args.visitation_bonus}"
     print(run_name)
     if args.track:
         import wandb
@@ -58,7 +59,7 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
             monitor_gym=False,
             save_code=False,
         )
-    writer = SummaryWriter(f"runs/{run_name}")
+    writer = SummaryWriter(f"runs_v2/uniform/{seed}/{run_name}")
     writer.add_text(
         "hyperparameters",
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
@@ -86,7 +87,7 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
     if args.rnn_type == 'lstm':
         agent = LstmAgent(envs, args.hidden_size).to(device)
     elif args.rnn_type == 'gru':
-        agent = GruAgent(envs, args.hidden_size, feature_extractor=True, option_len=len(options), quantized=args.quantized).to(device)
+        agent = GruAgent(envs, args.hidden_size, feature_extractor=True, option_len=len(options), quantized=args.quantized, critic_layer_size=args.critic_layer_size, actor_layer_size=args.actor_layer_size).to(device)
     else:
         print("Unknown type of model. Please choose between either LSTM or GRU.")
         exit()
@@ -444,13 +445,23 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
         # print("entropy ",entropy_loss.item())
         # print("goals reached ", episodic_goal_avg)
-        print(episodic_r_avg, episodic_l_avg, episodic_goal_avg)
+        writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
+        writer.add_scalar("charts/episodic_length", episodic_l_avg, global_step)
+        writer.add_scalar("charts/episodic_return", episodic_r_avg, global_step)
+        writer.add_scalar("charts/episodic_goals_reached", episodic_goal_avg, global_step)
+        writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
+        writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
+        writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
+        writer.add_scalar("losses/old_approx_kl", old_approx_kl.item(), global_step)
+        writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
+        writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
+        writer.add_scalar("losses/explained_variance", explained_var, global_step)
         if args.track:
                 wandb.log({"value_loss": v_loss.item(), "policy_loss":pg_loss.item(),"entropy":entropy_loss.item(), "lr": optimizer.param_groups[0]["lr"], "clipfac":np.mean(clipfracs), "old_approx_kl": old_approx_kl.item(), "approx_kl": approx_kl.item(), "explained_variance": explained_var, "episodic_return":episodic_r_avg ,"episodic_goals_reached":episodic_goal_avg, "episodic_length": episodic_l_avg})
     envs.close()
     writer.close()
 
-    torch.save(agent.state_dict(), f'models/{seed}/{problem}-lr{args.learning_rate}-num_step{args.num_steps}-clip_coef{args.clip_coef}-ent_coef{args.ent_coef}-vf_coef{args.vf_coef}-max_grad{args.max_grad_norm}.pt')
+    torch.save(agent.state_dict(), f'models_sweep_input_v2/uniform/{seed}/{problem}-lr{args.learning_rate}-num_step{args.num_steps}-clip_coef{args.clip_coef}-ent_coef{args.ent_coef}-epoch{args.update_epochs}-vloss{args.clip_vloss}-visit{args.visitation_bonus}.pt')
 
 
 if __name__ == "__main__":

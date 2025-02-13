@@ -96,9 +96,9 @@ class LstmAgent(nn.Module):
         return action, probs.log_prob(action), probs.entropy(), self.critic(concatenated), lstm_state
 
 class GruAgent(nn.Module):
-    def __init__(self, envs, h_size=64, feature_extractor=False, greedy=False, option_len=0, quantized=1):
+    def __init__(self, envs, h_size=64, feature_extractor=False, greedy=False, option_len=0, quantized=0, actor_layer_size=64, critic_layer_size=64):
         super().__init__()
-        self.input_to_actor = False
+        self.input_to_actor = True
         self.hidden_size = h_size
         self.greedy = greedy
         self.quantized = quantized
@@ -124,35 +124,35 @@ class GruAgent(nn.Module):
         # self.critic = layer_init(nn.Linear(128 + envs.single_observation_space.shape[0], 1), std=1)
         if self.input_to_actor:
             self.actor = nn.Sequential(
-                layer_init(nn.Linear(h_size + envs.single_observation_space.shape[0], 64)),
+                layer_init(nn.Linear(h_size + envs.single_observation_space.shape[0], actor_layer_size)),
                 nn.Tanh(),
-                layer_init(nn.Linear(64, 64)),
+                layer_init(nn.Linear(actor_layer_size, actor_layer_size)),
                 nn.Tanh(),
-                layer_init(nn.Linear(64, envs.single_action_space.n + option_len)),
+                layer_init(nn.Linear(actor_layer_size, envs.single_action_space.n + option_len),std=np.sqrt(2)*0.01),
             )
 
             self.critic = nn.Sequential(
-                layer_init(nn.Linear(h_size + envs.single_observation_space.shape[0], 64)),
+                layer_init(nn.Linear(h_size + envs.single_observation_space.shape[0], critic_layer_size)),
                 nn.Tanh(),
-                layer_init(nn.Linear(64, 64)),
+                layer_init(nn.Linear(critic_layer_size, critic_layer_size)),
                 nn.Tanh(),
-                layer_init(nn.Linear(64, 1)),
+                layer_init(nn.Linear(critic_layer_size, 1)),
             )
         else:
             self.actor = nn.Sequential(
-                layer_init(nn.Linear(h_size, 64)),
+                layer_init(nn.Linear(h_size, actor_layer_size)),
                 nn.Tanh(),
-                layer_init(nn.Linear(64, 64)),
+                layer_init(nn.Linear(actor_layer_size, actor_layer_size)),
                 nn.Tanh(),
-                layer_init(nn.Linear(64, envs.single_action_space.n + option_len), std=np.sqrt(2)*0.01),
+                layer_init(nn.Linear(actor_layer_size, envs.single_action_space.n + option_len), std=np.sqrt(2)*0.01),
             )
 
             self.critic = nn.Sequential(
-                layer_init(nn.Linear(h_size , 64)),
+                layer_init(nn.Linear(h_size , critic_layer_size)),
                 nn.Tanh(),
-                layer_init(nn.Linear(64, 64)),
+                layer_init(nn.Linear(critic_layer_size, critic_layer_size)),
                 nn.Tanh(),
-                layer_init(nn.Linear(64, 1)),
+                layer_init(nn.Linear(critic_layer_size, 1)),
             )
 
     def get_states(self, x, gru_state, done):

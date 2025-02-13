@@ -11,7 +11,7 @@ class ArgsTest:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
-    track: bool = True
+    track: bool = False
     """if toggled, this experiment will be tracked with Weights and Biases"""
     wandb_project_name: str = "PPOwithRandomInitial5x5"
     """the wandb's project name"""
@@ -52,9 +52,9 @@ class ArgsTest:
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
     ent_coef: float = 0.07
     """coefficient of the entropy"""
-    vf_coef: float = 0.46
+    vf_coef: float = 0.5
     """coefficient of the value function"""
-    max_grad_norm: float = 0.37
+    max_grad_norm: float = 0.4
     """the maximum norm for the gradient clipping"""
     target_kl: float = None
     """the target KL divergence threshold"""
@@ -64,7 +64,7 @@ class ArgsTest:
     "weight decay for l2 regularization"
     l1_lambda: float = 0
     "l1 lambda regularization"
-    hidden_size: int = 300
+    hidden_size: int = 256
     "size of RNN hidden states"
     problem: str = "test"
     "Problem"
@@ -74,6 +74,10 @@ class ArgsTest:
     "maximum episode length"
     game_width: int = 5
     "the width of the grid"
+    actor_layer_size: int = 64
+    "actor layer size"
+    critic_layer_size: int = 64
+    "critic layer size"
     visitation_bonus: int = 1
     "toggles using visitation bonus in calculating reward"
     use_options: int = 0
