@@ -1,3 +1,4 @@
+import copy
 import gymnasium as gym
 import numpy as np
 import torch
@@ -13,14 +14,14 @@ class ComboGym(gym.Env):
         self._problem = problem
         self.render_mode = None
         self.observation_space = gym.spaces.Box(low=0, high=1, shape=(len(self._game.get_observation()), ), dtype=np.float64)
+        self.n_discrete_actions = 3
+        self.action_space = gym.spaces.Discrete(self.n_discrete_actions)
         self.n_steps = 0
         
         if options is not None:
             self.setup_options(options)
         else:
-            self.action_space = gym.spaces.Discrete(len(self._game.get_actions()))
-            self.program_stack = None
-            self.option_index = None
+            self.options = None
 
     def get_observation(self):
         return self._game.get_observation()
@@ -29,10 +30,8 @@ class ComboGym(gym.Env):
         """
         Enables the corresponding agents to choose from both actions and options
         """
-        self.option_index = len(self._game.get_actions())
-        self.program_stack = [basic_actions(i) for i in range(self.option_index)] + options
-        self.action_space = gym.spaces.Discrete(len(self.program_stack))
-        self.option_sizes = [3 for _ in range(len(options))]
+        self.action_space = gym.spaces.Discrete(self.action_space.n + len(options))
+        self.options = copy.deepcopy(options)
     
     def reset(self, init_loc=None, init_dir=None, seed=0, options=None):
         self._game.reset(init_loc)
@@ -51,10 +50,11 @@ class ComboGym(gym.Env):
                 truncated = True
             return self.get_observation(), reward, terminated, truncated, {}
     
-        if self.option_index and action >= self.option_index:
+        if self.options and action >= self.n_discrete_actions:
             reward_sum = 0
-            for _ in range(self.option_sizes[action - self.option_index]):
-                option_action, _ = self.program_stack[action].get_action_with_mask(torch.tensor(self.get_observation(), dtype=torch.float32).view(1, -1))
+            option = self.options[action - self.n_discrete_actions]
+            for _ in range(option.option_size):
+                option_action, _ = option.get_action_with_mask(torch.tensor(self.get_observation(), dtype=torch.float32).view(1, -1))
                 obs, reward, terminated, truncated, _ = process_action(option_action)
                 reward_sum += reward
                 if terminated or truncated:
