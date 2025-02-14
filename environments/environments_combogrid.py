@@ -32,25 +32,27 @@ class Problem:
 
     def _parse_problem(self, problem_str):
         problem_parts = problem_str.split("-")
+        print(problem_parts)
         initial = self._parse_position(problem_parts[0])
         goals = [self._parse_position(goal_str) for goal_str in problem_parts[1:]]
         return initial, goals
 
     def _parse_position(self, pos_str):
-        if pos_str[0] == 'T':
+        v_loc, h_loc = pos_str[0], pos_str[1]
+        if v_loc == 'T':
             row = 0
-        elif pos_str[0] == 'B':
+        elif v_loc == 'B':
             row = self.rows - 1
-        elif pos_str[0] == 'M':
+        elif v_loc == 'M':
             row = math.floor(self.rows / 2)
         else:
             raise ValueError("Invalid row specifier. Use 'T' for top, 'B' for bottom, or 'M' for middle.")
         
-        if pos_str[1] == 'L':
+        if h_loc == 'L':
             col = 0
-        elif pos_str[1] == 'R':
+        elif h_loc == 'R':
             col = self.columns - 1
-        elif pos_str[0] == 'M':
+        elif h_loc == 'M':
             col = math.floor(self.columns / 2)
         else:
             raise ValueError("Invalid column specifier. Use 'L' for left, 'R' for right, or 'M' for middle.")
