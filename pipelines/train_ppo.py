@@ -9,8 +9,7 @@ from utils import utils
 from typing import Union, List
 from dataclasses import dataclass
 from torch.utils.tensorboard import SummaryWriter
-from environments.environments_combogrid_gym import make_env
-from environments.environments_combogrid import SEEDS as COMBOGRID_SEEDS
+from environments.environments_combogrid_gym import make_env as make_env_combogrid
 from environments.environments_combogrid import PROBLEM_NAMES as COMBOGRID_PROBLEMS
 from environments.environments_minigrid import make_env_simple_crossing, make_env_four_rooms
 from training.train_ppo_agent import train_ppo
@@ -20,13 +19,14 @@ from training.train_ppo_agent import train_ppo
 class Args:
     exp_id: str = ""
     """The ID of the finished experiment; to be filled in run time"""
-    exp_name: str = "test_noOptions"
+    exp_name: str = "train_ppoAgent"
     """the name of this experiment"""
-    env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
+    env_id: str = "ComboGrid"
     """the id of the environment corresponding to the trained agent
     choices from [ComboGrid, MiniGrid-SimpleCrossingS9N1-v0, MiniGrid-FourRooms-v0]
     """
-    env_seeds: Union[List[int], str] = (0,1,2) # SimpleCrossing
+    # env_seeds: Union[List[int], str] = (0,1,2) # SimpleCrossing
+    env_seeds: Union[List[int], str] = (3,) # ComboGrid
     # env_seeds: Union[List[int], str] = (41,51,8) # FourRooms
     # env_seeds: Union[List[int], str] = (8,) # FourRooms
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'.
@@ -40,7 +40,7 @@ class Args:
     """if toggled, this experiment will be tracked with Weights and Biases"""
     track_tensorboard: bool = False
     """if toggled, this experiment will be tracked with Tensorboard SummaryWriter"""
-    wandb_project_name: str = "BASELINE0"
+    wandb_project_name: str = "BASELINE0_Combogrid"
     """the wandb's project name"""
     wandb_entity: str = None
     """the entity (team) of wandb's project"""
@@ -52,7 +52,7 @@ class Args:
     # hyperparameter arguments
     game_width: int = 5
     """the length of the combo/mini-grid square"""
-    hidden_size: int = 6
+    hidden_size: int = 64
     """"""
     l1_lambda: float = 0
     """"""
@@ -64,10 +64,10 @@ class Args:
     # Specific arguments
     total_timesteps: int = 1_500_000
     """total timesteps for testinging"""
-    # learning_rate: Union[List[float], float] = (2.5e-4, 2.5e-4, 2.5e-4, 2.5e-4) # ComboGrid
+    learning_rate: Union[List[float], float] = (2.5e-4, 2.5e-4, 2.5e-4, 2.5e-4) # ComboGrid
     # learning_rate: Union[List[float], float] = (0.0005, 0.0005, 5e-05) # Vanilla RL FourRooms
     # learning_rate: Union[List[float], float] = (5e-05,) # Vanilla RL FourRooms
-    learning_rate: Union[List[float], float] = (0.0005, 0.001, 0.001) # SimpleCrossing
+    # learning_rate: Union[List[float], float] = (0.0005, 0.001, 0.001) # SimpleCrossing
     """the learning rate of the optimize for testinging"""
     num_envs: int = 4
     """the number of parallel game environments for testinging"""
@@ -85,16 +85,16 @@ class Args:
     """the K epochs to update the policy for testinging"""
     norm_adv: bool = True
     """Toggles advantages normalization for testinging"""
-    # clip_coef: Union[List[float], float] = (0.2, 0.2, 0.2, 0.2) # ComboGrid
+    clip_coef: Union[List[float], float] = (0.2, 0.2, 0.2, 0.2) # ComboGrid
     # clip_coef: Union[List[float], float] = (0.15, 0.1, 0.2) # Vanilla RL FourRooms
     # clip_coef: Union[List[float], float] = (0.2,) # Vanilla RL FourRooms
-    clip_coef: Union[List[float], float] = (0.25, 0.2, 0.2) # SimpleCrossing
+    # clip_coef: Union[List[float], float] = (0.25, 0.2, 0.2) # SimpleCrossing
     """the surrogate clipping coefficient"""
     clip_vloss: bool = True
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
-    # ent_coef: Union[List[float], float] = (0.01, 0.01, 0.01, .01) # ComboGrid
+    ent_coef: Union[List[float], float] = (0.01, 0.01, 0.01, .01) # ComboGrid
     # ent_coef: Union[List[float], float] = (0.05, 0.2, 0.0) # Vanilla RL FourRooms
-    ent_coef: Union[List[float], float] = (0.1, 0.1, 0.1) # SimpleCrossing
+    # ent_coef: Union[List[float], float] = (0.1, 0.1, 0.1) # SimpleCrossing
     """coefficient of the entropy"""
     vf_coef: float = 0.5
     """coefficient of the value function"""
@@ -184,7 +184,7 @@ def main(args: Args):
     elif "ComboGrid" in args.env_id:
         problem = args.problem
         envs = gym.vector.SyncVectorEnv(
-            [make_env(rows=args.game_width, columns=args.game_width, problem=problem) for _ in range(args.num_envs)],
+            [make_env_combogrid(rows=args.game_width, columns=args.game_width, problem=problem) for _ in range(args.num_envs)],
         )    
     elif args.env_id == "MiniGrid-FourRooms-v0":
         envs = gym.vector.SyncVectorEnv( 
@@ -222,9 +222,6 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError
     
-    if args.env_id == "ComboGrid":
-        args.env_seeds = [COMBOGRID_SEEDS[problem] for problem in args.combogrid_problems]
-
     # Parameter specification for each problem
     lrs = args.learning_rate
     clip_coef = args.clip_coef
@@ -240,7 +237,7 @@ if __name__ == "__main__":
         args.learning_rate = lrs[i]
         args.exp_id = f'{exp_id}_lr{args.learning_rate}_clip{args.clip_coef}_ent{args.ent_coef}_envsd{args.env_seed}'
         if args.env_id == "ComboGrid":
-            args.problem = COMBOGRID_PROBLEMS[i]
+            args.problem = COMBOGRID_PROBLEMS[args.env_seed]
             args.exp_id += f'_{args.problem}'
         main(args)
     

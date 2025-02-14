@@ -18,7 +18,7 @@ import concurrent.futures
 from pipelines.losses import LevinLossActorCritic, LogitsLossActorCritic
 from agents.policy_guided_agent import PPOAgent
 from environments.environments_combogrid_gym import ComboGym
-from environments.environments_combogrid import SEEDS
+from environments.environments_combogrid import SEEDS, PROBLEM_NAMES as COMBO_PROBLEM_NAMES
 from environments.environments_minigrid import get_training_tasks_simplecross
 from utils.utils import timing_decorator
 from utils.utils import timing_decorator
@@ -26,43 +26,43 @@ from utils.utils import timing_decorator
 
 @dataclass
 class Args:
-    exp_name: str = "extract_decOptionWhole_randomInit"
+    exp_name: str = "extract_learnOptions_randomInit"
     # exp_name: str = "extract_decOptionWhole_sparseInit"
     # exp_name: str = "extract_learnOptions_randomInit_discreteMasks"
     # exp_name: str = "extract_learnOptions_randomInit_pitisFunction"
     """the name of this experiment"""
-    env_seeds: Union[List[int], str] = (0,1,2)
+    env_seeds: Union[List[int], str] = (0,1,2,3)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
     # model_paths: List[str] = (
     #     'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_envsd0',
     #     'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd1',
     #     'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd2'
     # )
-    model_paths: List[str] = (
-        'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h6_l10_lr0.0005_clip0.25_ent0.1_envsd0',
-        'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h6_l10_lr0.001_clip0.2_ent0.1_envsd1',
-        'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h6_l10_lr0.001_clip0.2_ent0.1_envsd2'
-    )
+    # model_paths: List[str] = (
+    #     'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h6_l10_lr0.0005_clip0.25_ent0.1_envsd0',
+    #     'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h6_l10_lr0.001_clip0.2_ent0.1_envsd1',
+    #     'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h6_l10_lr0.001_clip0.2_ent0.1_envsd2'
+    # )
     # model_paths: List[str] = (
     #     'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_envsd0',
     #     'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd1',
     #     'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd2',
     #     )
-    # model_paths: List[str] = (
-    #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd0_TL-BR',
-    #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd1_TR-BL',
-    #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd2_BR-TL',
-    #     'train_ppo_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_sd3_BL-TR',
-    # )
+    model_paths: List[str] = (
+        'train_ppoAgent_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_envsd0_TL-BR',
+        'train_ppoAgent_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_envsd1_TR-BL',
+        'train_ppoAgent_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_envsd2_BR-TL',
+        'train_ppoAgent_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_envsd3_BL-TR',
+    )
 
     # These attributes will be filled in the runtime
     exp_id: str = ""
     """The ID of the finished experiment; to be filled in run time"""
     problems: List[str] = ()
-    """the name of the problems the agents were trained on"""
+    """the name of the problems the agents were trained on; To be filled in runtime"""
 
     # Algorithm specific arguments
-    env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
+    env_id: str = "ComboGrid"
     """the id of the environment corresponding to the trained agent
     choices from [ComboGrid, MiniGrid-SimpleCrossingS9N1-v0]
     """
@@ -72,7 +72,7 @@ class Args:
     # hyperparameters
     game_width: int = 5
     """the length of the combo/mini grid square"""
-    hidden_size: int = 6
+    hidden_size: int = 64
     """"""
     l1_lambda: float = 0
     """"""
@@ -95,7 +95,7 @@ class Args:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "BASELINE0"
+    wandb_project_name: str = "BASELINE0_Combogrid"
     """the wandb's project name"""
     wandb_entity: str = None
     """the entity (team) of wandb's project"""
@@ -109,7 +109,8 @@ def get_single_environment(args: Args, seed):
     if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
         env = get_training_tasks_simplecross(view_size=args.game_width, seed=seed)
     elif args.env_id == "ComboGrid":
-        env = ComboGym(rows=args.game_width, columns=args.game_width, problem=args.problems[0])
+        problem = COMBO_PROBLEM_NAMES[seed]
+        env = ComboGym(rows=args.game_width, columns=args.game_width, problem=problem)
     else:
         raise NotImplementedError
     return env
@@ -143,7 +144,7 @@ def process_args() -> Args:
         raise NotImplementedError
     
     if args.env_id == "ComboGrid":
-        args.env_seeds = [SEEDS[problem] for problem in args.problems]
+        args.problems = [COMBO_PROBLEM_NAMES[seed] for seed in args.env_seeds]
     elif args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
         args.problems = [args.env_id + f"_{seed}" for seed in args.env_seeds]
         
@@ -800,8 +801,6 @@ def learn_mask(agent: PPOAgent, trajectories: dict, args: Args, discrete_masks=T
     mask = torch.nn.Parameter(torch.randn(args.hidden_size), requires_grad=True)
     optimizer = torch.optim.Adam([mask], lr=args.mask_learning_rate)
 
-    initial_mask = torch.t_copy(mask)
-
     init_loss = None
 
     steps = 0
@@ -818,11 +817,10 @@ def learn_mask(agent: PPOAgent, trajectories: dict, args: Args, discrete_masks=T
 
             # Apply transformations with requires_grad
 
+            mask_transformed = 1.5 * torch.tanh(mask) + 0.5 * torch.tanh(-3 * mask)
             if discrete_masks:
-                mask_transformed = 1.5 * torch.tanh(mask) + 0.5 * torch.tanh(-3 * mask)
                 mask_transformed = STEQuantize.apply(mask_transformed)
             else:
-                mask_transformed = 1.5 * torch.tanh(mask) + 0.5 * torch.tanh(-3 * mask)
                 mask_transformed = mask_transformed.clamp(-0.5, 0.5) * 2
 
             new_trajectory = agent.run_with_mask(envs, mask_transformed, trajectory.get_length())
@@ -837,8 +835,6 @@ def learn_mask(agent: PPOAgent, trajectories: dict, args: Args, discrete_masks=T
             if not init_loss:
                 init_loss = mask_loss.item()
 
-            # logger.info(f"loss={mask_loss.item()}, {torch.stack(new_trajectory.logits).shape}, {torch.stack(trajectory.logits).shape}")
-
             # Backward pass and optimization
             optimizer.zero_grad()
             mask_loss.backward()
@@ -851,7 +847,10 @@ def learn_mask(agent: PPOAgent, trajectories: dict, args: Args, discrete_masks=T
                 # pbar.update(1)  # Update the outer progress bar
 
     mask_transformed = 1.5 * torch.tanh(mask) + 0.5 * torch.tanh(-3 * mask)
-    mask_transformed = mask_transformed.clamp(-0.5, 0.5) * 2
+    if discrete_masks:
+        mask_transformed = STEQuantize.apply(mask_transformed)
+    else:
+        mask_transformed = mask_transformed.clamp(-0.5, 0.5) * 2
     return mask_transformed.detach().data, init_loss, mask_loss.item()
 
 
@@ -903,7 +902,7 @@ def learn_options(args: Args, logger: logging.Logger):
             for future in concurrent.futures.as_completed(futures):
                 try:
                     (mask, problem, length, model_path, s), init_loss, final_loss = future.result()
-                    all_masks_info.append((mask, problem, length, model_path, s))
+                    all_masks_info.append((mask, problem, seed, length, model_path, s))
                     logger.info(f'Progress: segment:{s} of length{length} done. init_loss={init_loss}, final_loss={final_loss}')
                 except Exception as exc:
                     logger.error(f'Segment:{future.s} of length{future.length}generated an exception: {exc}')
@@ -925,7 +924,7 @@ def learn_options(args: Args, logger: logging.Logger):
         best_loss = None
         best_mask_model = None
 
-        for mask, problem, option_size, model_path, segment in all_masks_info:
+        for mask, problem, seed, option_size, model_path, segment in all_masks_info:
             logger.info(f'Evaluating the option from problem={problem}, env_seed={seed}, segment=({segment},{segment+option_size})')
             env = get_single_environment(args, seed=seed)
             agent = PPOAgent(env, hidden_size=args.hidden_size)
@@ -1114,11 +1113,11 @@ def main():
     logger.info(buffer)
     utils.logger_flush(logger)
 
-    evaluate_all_masks_levin_loss(args, logger)
+    # evaluate_all_masks_levin_loss(args, logger)
     # hill_climbing_mask_space_training_data()
     # whole_dec_options_training_data_levin_loss()
     # hill_climbing_all_segments()
-    # learn_options()
+    learn_options(args, logger)
 
     logger.info(f"Run id: {run_name}")
     logger.info(f"logs saved at {args.log_path}")
