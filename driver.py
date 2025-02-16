@@ -1,25 +1,25 @@
 import multiprocessing
-from agent_recurrent import train_model
-from agent_recurrent_positive import train_model_positive
+from agents.train_ppo_agent import train_model
+from agents.train_ppo_agent_positive import train_model_positive
 import tyro
 from args import Args
-from model_recurrent import GruAgent
+from models.model_recurrent import GruAgent
 import os
 import torch
-from combo import Game
+from envs.combogrid import ComboGridEnv
 import copy
 import numpy as np
 import pickle
-from selecting_options_rewire import extract_options
+from utils.selecting_options_rewire import extract_options
 import gymnasium as gym
-from combo_gym import ComboGym
+from envs.combogrid_gym import ComboGridGym
 import random
 
 device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
 
 def make_env( problem, episode_length=None, width=5):
     def thunk():
-        env = ComboGym(rows=width, columns=width, problem=problem, random_initial=False, episode_length=episode_length)
+        env = ComboGridGym(rows=width, columns=width, problem=problem, random_initial=False, episode_length=episode_length)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
@@ -40,7 +40,7 @@ def generate_trajectories(args, problem):
         [make_env(problem, width=args.game_width) for i in range(1)],
         )
         rnn = GruAgent(env,args.hidden_size, option_len=0, greedy=True)
-        rnn.load_state_dict(torch.load(f'models/{args.seed}/{problem}.pt'))
+        rnn.load_state_dict(torch.load(f'training_data/models/{args.seed}/{problem}.pt'))
         rnn.eval()
         trajectories = []
         counter = 0
@@ -50,7 +50,7 @@ def generate_trajectories(args, problem):
         for i in range(args.game_width):
             for j in range(args.game_width):
                 traj = Trajectory()
-                env = Game(args.game_width, args.game_width, problem, multiple_initial_states=False)
+                env = ComboGridEnv(args.game_width, args.game_width, problem, multiple_initial_states=False)
                 env._matrix_unit = np.zeros((args.game_width, args.game_width))
                 env._matrix_unit[i][j] = 1
                 env._x, env._y = (i, j)
@@ -70,13 +70,13 @@ def generate_trajectories(args, problem):
                     counter += 1
                 if len(traj.get_trajectory()) > 0 and env.is_over():
                     trajectories.append(traj)
-        # if not os.path.exists(f'trajectories/{args.seed}'):
+        # if not os.path.exists(f'training_data/trajectories/{args.seed}'):
         try:
-            os.mkdir(f'trajectories/{args.seed}')
+            os.mkdir(f'training_data/trajectories/{args.seed}')
         except:
             pass
         # print(trajectories)
-        with open (f'trajectories/{args.seed}/{problem}.pkl', 'wb') as f:
+        with open (f'training_data/trajectories/{args.seed}/{problem}.pkl', 'wb') as f:
             pickle.dump(trajectories, f)
 
 if __name__ =="__main__":
@@ -101,7 +101,7 @@ if __name__ =="__main__":
     # extract_options(args.seed, args.game_width)
 
     #TODO train test model with and without options
-    options = [None, f"options/{args.seed}/selected_options.pkl"]
+    options = [None, f"training_data/options{args.seed}/selected_options.pkl"]
     with multiprocessing.Pool(processes=ncpus) as pool:  # Adjust the number of processes here
         pool.starmap(train_model_positive, [("test", o, args.seed) for o in options])
         pool.starmap(train_model, [("test", o) for o in options])

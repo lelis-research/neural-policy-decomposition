@@ -1,27 +1,14 @@
-envs
 __pycache__/*
 *.out
 *.pth
 *.txt
 *.npy
-binary
 outputs
-images/*
-runs/*
-models/*
-masked data/*
-text files/*
+logs/*
+training_data/*
 test.py
-runnables/*
-dataset.pkl
+scripts/*
 test_mlp_l1.py
 test_gru_l1.py
-selected_options.pkl
-trajectories/*
 wandb/*
-options/*
-wandb_1/*
-wandb_LOCAL/*
-runs_LOCAL/*
 select_model_sweep.py
-models*/*
