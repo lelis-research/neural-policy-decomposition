@@ -48,7 +48,7 @@ def train_model(problem="test", option_dir=None):
     use_options = 0
     if option_dir is not None:
         use_options = 1
-    run_name = f"{args.rnn_type}-{args.hidden_size}-{args.episode_length}-{args.num_steps}-{problem}-{args.seed}-{use_options}-{args.quantized}"
+    run_name = f"{seed}/{problem}-lr{args.learning_rate}-num_step{args.num_steps}-clip_coef{args.clip_coef}-ent_coef{args.ent_coef}-epoch{args.update_epochs}-vloss{args.clip_vloss}-visit{args.visitation_bonus}-actor{args.actor_layer_size}-critic{args.critic_layer_size}"
     print(run_name)
     if args.track:
         import wandb
@@ -62,16 +62,16 @@ def train_model(problem="test", option_dir=None):
             monitor_gym=False,
             save_code=False,
         )
-    writer = SummaryWriter(f"logs/{run_name}")
+    writer = SummaryWriter(f"logs/all-samples/{args.seed}/{run_name}")
     writer.add_text(
         "hyperparameters",
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
     )
     options = []
     if use_options == 1:
-        with open(option_dir, "rb") as file:
-            options = pickle.load(file)
-    options = [ 3, 4, 5, 6]
+        # with open(option_dir, "rb") as file:
+        #     options = pickle.load(file)
+        options = [ 3, 4, 5, 6]
 
     # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
@@ -310,9 +310,9 @@ def train_model(problem="test", option_dir=None):
             wandb.log({"value_loss": v_loss.item(), "policy_loss":pg_loss.item(),"entropy":entropy_loss.item(), "lr": optimizer.param_groups[0]["lr"],  "clipfac":np.mean(clipfracs), "old_approx_kl": old_approx_kl.item(), "approx_kl": approx_kl.item(), "explained_variance": explained_var, "episodic_return":episodic_r_avg ,"episodic_goals_reached":episodic_goal_avg, "episodic_length": episodic_l_avg})
     envs.close()
     writer.close()
-    if not os.path.exists(f'training_data/models/{args.seed}'):
-        os.mkdir(f'training_data/models/{args.seed}')
-    torch.save(agent.state_dict(), f'training_data/models/{args.seed}/{problem}-{use_options}.pt')
+    if not os.path.exists(f'training_data/models-all-samples/{args.seed}'):
+        os.mkdir(f'training_data/models-all-samples/{args.seed}')
+    torch.save(agent.state_dict(), f'training_data/models-all-samples/{args.seed}/{run_name}.pt')
 
 if __name__ == "__main__":
     train_model(option_dir="training_data/optionsselected_options_width_5.pkl")

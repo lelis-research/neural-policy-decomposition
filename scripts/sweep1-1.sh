@@ -2,7 +2,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=6G
 #SBATCH --time=01-00:00
-#SBATCH --output=outputs/sweep3_noFE_S0A/%N-%j.out  # %N for node name, %j for jobID
+#SBATCH --output=logs/sweep/%A_%a.out  # %N for node name, %j for jobID
 #SBATCH --account=rrg-lelis
 #SBATCH --mail-user=behdin@ualberta.ca
 #SBATCH --mail-type=ALL
@@ -17,7 +17,7 @@ export FLEXIBLAS=imkl
 seeds=(1 2 3)
 learning_rates=(0.00001 0.00075 0.005)
 max_len=(50 60)
-ent_coefs=(0.01 0.015 0.02 0.1 0.5)
+ent_coefs=(0.02 0.1 0.5)
 clip_coefs=(0.01 0.025 0.1)
 update_epochs=(1 5 10)
 clip_vloss=(0)
@@ -93,7 +93,7 @@ CS="${critic_size[${critic_index}]}"
 
 
 # Run the training script
-OMP_NUM_THREADS=1 python3.11 ~/scratch/neural-policy-decomposition/agents/agent_recurrent_positive.py \
+OMP_NUM_THREADS=1 python3.11 ~/scratch/neural-policy-decomposition/agents/train_ppo_agent_positive.py \
   --seed "${SD}" \
   --num_steps "${STEP}" \
   --episode_length "${STEP}" \
