@@ -19,9 +19,15 @@ SEEDS = {
     "BR-ML": 11,
 
     "BL-MR-ML-BM-TM": 12,
+    "BL-MR-BM": 13
 }
 
 PROBLEM_NAMES = list(SEEDS.keys())
+
+DIRECTIONS = {(0,0,1): "U",
+              (0,1,2): "D",
+              (2,1,0): "L",
+              (1,0,2): "R"}
 
 class Problem:
     def __init__(self, rows, columns, problem_str):

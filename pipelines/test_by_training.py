@@ -51,11 +51,12 @@ class Args:
     choices from [ComboGrid, MiniGrid-FourRooms-v0]"""
     test_problems: List[str] = tuple()
     """"""
-    test_env_seeds: Union[List[int], str] = (12,)
+    test_env_seeds: Union[List[int], str] = (13,)
     """the seeds of the environment for testing"""
     total_timesteps: int = 1_500_000
     """total timesteps for testing"""
     # learning_rate: Union[List[float], float] = (0.0005, 0.0005, 5e-05) # Vanilla RL
+    # learning_rate: Union[List[float], float] = (0.0005, 0.001, 0.001)
     learning_rate: Union[List[float], float] = (0.0005, 0.001, 0.001)
     # learning_rate: Union[List[float], float] = (0.0005, 0.0005, 0.0005) # Dec-Option Whole 
     """the learning rate of the optimize for testing"""
@@ -76,7 +77,8 @@ class Args:
     norm_adv: bool = True
     """Toggles advantages normalization for testing"""
     # clip_coef: Union[List[float], float] = (0.15, 0.1, 0.2) # Vanilla RL
-    clip_coef: Union[List[float], float] = (0.25, 0.2, 0.2)
+    # clip_coef: Union[List[float], float] = (0.25, 0.2, 0.2)
+    clip_coef: Union[List[float], float] = (0.2, 0.2, 0.2) # Combogrid test
     # clip_coef: Union[List[float], float] = (0.3, 0.25, 0.15) # Dec-Option Whole 
     """the surrogate clipping coefficient"""
     clip_vloss: bool = True
