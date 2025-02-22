@@ -2,14 +2,15 @@ import os
 import tyro
 from utils import utils
 from typing import Union, List
-from pipelines.losses import LogitsLossActorCritic
+from pipelines.losses import LevinLossActorCritic
 from pipelines.extract_subpolicy_ppo import load_options
 from dataclasses import dataclass
+from environments.environments_combogrid import PROBLEM_NAMES as COMMBOGRID_NAMES
 
 
 @dataclass
 class Args:
-    exp_id: str = "extract_learn_options__ComboGrid_gw5_h64_l10_r400_sd0,1,2,3_olen2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24"
+    exp_id: str = "extract_learnOptions_randomInit_ComboGrid_gw5_h64_l10_r400_envsd0,1,2,3"
     """The ID of the finished experiment"""
     # env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
     env_id: str = "ComboGrid"
@@ -20,9 +21,9 @@ class Args:
     """the length of the combo/mini grid square"""
     hidden_size: int = 64
     """"""
-    problems: List[str] = ("TL-BR", "TR-BL", "BR-TL", "BL-TR")
+    problems: List[str] = tuple()
     """"""
-    seeds: Union[List[int], str] = (0,1,2,3)
+    env_seeds: Union[List[int], str] = (0,1,2,3)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
     
     # script arguments
@@ -34,16 +35,16 @@ class Args:
     """The logging level"""
 
 
-def main(args):
+def main(args: Args):
     log_path = os.path.join(args.log_path, args.exp_id)
-    logger = utils.get_logger("whole_grid_testing_logger", args.log_level, log_path, "whole_grid_testing")
+    logger, args.log_path = utils.get_logger("whole_grid_testing_logger", args.log_level, log_path)
     
-    loss = LogitsLossActorCritic(logger)
+    loss = LevinLossActorCritic(logger)
 
     options, _ = load_options(args, logger)
 
     logger.info("Testing on each grid cell")
-    for seed, problem in zip(args.seeds, args.problems):
+    for seed, problem in zip(args.env_seeds, args.problems):
         logger.info(f"Testing on each cell..., {problem}")
         loss.evaluate_on_each_cell(options=options, 
                                    problem_test=problem, 
@@ -56,4 +57,6 @@ def main(args):
 
 if __name__ == "__main__":
     args = tyro.cli(Args)
+    if args.env_id == "ComboGrid":
+        args.problems = [COMMBOGRID_NAMES[i] for i in args.env_seeds]
     main(args)

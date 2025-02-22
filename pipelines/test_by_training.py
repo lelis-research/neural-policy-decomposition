@@ -14,20 +14,18 @@ from pipelines.extract_subpolicy_ppo import load_options
 from dataclasses import dataclass
 from training.train_ppo_agent import train_ppo
 from environments.environments_minigrid import make_env_four_rooms
+from environments.environments_combogrid import PROBLEM_NAMES as COMBOGRID_NAMES
+from environments.environments_combogrid_gym import make_env as make_env_combogrid
 
 
 @dataclass
 class Args:
-    exp_id: str = "extract_learnOptions_randomInit_discreteMasks_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_r400_envsd0,1,2"
+    exp_id: str = "extract_learnOptions_randomInit_ComboGrid_gw5_h64_l10_r400_envsd0,1,2,3"
     """The ID of the finished experiment"""
-    env_id: str = "MiniGrid-SimpleCrossingS9N1-v0"
+    env_id: str = "ComboGrid"
     """the id of the environment corresponding to the trained agent
     choices from [ComboGrid, MiniGrid-SimpleCrossingS9N1-v0]
     """
-    env_seeds: Union[List[int], str] = (0,1,2)
-    """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
-    problems: List[str] = tuple()
-    """To be filled"""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
     cpus: int = 4
@@ -46,14 +44,14 @@ class Args:
     # Testing specific arguments
     test_exp_id: str = ""
     """The ID of the new experiment"""
-    test_exp_name: str = "test_learnOptions_randomInit_discreteMasks"
+    test_exp_name: str = "test_learnOptions_randomInit"
     """the name of this experiment"""
-    test_env_id: str = "MiniGrid-FourRooms-v0"
+    test_env_id: str = "ComboGrid"
     """the id of the environment for testing
     choices from [ComboGrid, MiniGrid-FourRooms-v0]"""
     test_problems: List[str] = tuple()
     """"""
-    test_seeds: Union[List[int], str] = (41,51,8)
+    test_env_seeds: Union[List[int], str] = (12,)
     """the seeds of the environment for testing"""
     total_timesteps: int = 1_500_000
     """total timesteps for testing"""
@@ -107,7 +105,7 @@ class Args:
     """run seed"""
     track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "LMNOP"
+    wandb_project_name: str = "BASELINE0_Combogrid"
     """the wandb's project name"""
     wandb_entity: str = None
     """the entity (team) of wandb's project"""
@@ -119,7 +117,7 @@ class Args:
     """The logging level"""
 
 
-def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, seed: int, args: Args, logger: Logger):
+def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, env_seed: int, args: Args, logger: Logger):
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # TRY NOT TO MODIFY: seeding
@@ -128,7 +126,7 @@ def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, seed: int,
     torch.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
-    run_name = f"{test_exp_id}_sd{seed}"
+    run_name = f"{test_exp_id}_sd{args.seed}"
 
     if args.track:
         import wandb
@@ -138,7 +136,7 @@ def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, seed: int,
             group=test_exp_id,
             job_type="eval",
             entity=args.wandb_entity,
-            sync_tensorboard=True,
+            sync_tensorboard=False,
             config=vars(args),
             name=run_name,
             monitor_gym=True,
@@ -153,9 +151,14 @@ def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, seed: int,
     
     if args.test_env_id == "MiniGrid-FourRooms-v0":
         envs = gym.vector.SyncVectorEnv(
-        [make_env_four_rooms(view_size=args.game_width, seed=seed, options=options) 
+        [make_env_four_rooms(view_size=args.game_width, seed=env_seed, options=options) 
          for _ in range(args.num_envs)],
     )
+    elif "ComboGrid" in args.env_id:
+        problem = args.test_problem
+        envs = gym.vector.SyncVectorEnv(
+            [make_env_combogrid(rows=args.game_width, columns=args.game_width, problem=problem) for _ in range(args.num_envs)],
+        ) 
     else:
         raise NotImplementedError
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
@@ -181,18 +184,19 @@ def train_ppo_with_options(options: List[PPOAgent], test_exp_id: str, seed: int,
     logger.info(f"Reporting tensorboard summary writer on outputs/tensorboard/runs/{run_name}")
 
     train_ppo(envs=envs, 
-              seed=seed, 
+              seed=env_seed, 
               args=args, 
               model_file_name=model_path, 
               device=device, 
               logger=logger, 
               writer=writer,
               sparse_init=False)
+    wandb.finish()
 
 
 def main(args: Args):
 
-    logger = utils.get_logger("testing_by_training_logger", args.log_level, args.log_path, suffix="test_by_training")
+    logger, args.log_path = utils.get_logger("testing_by_training_logger", args.log_level, args.log_path)
 
     options, _ = load_options(args, logger)
 
@@ -203,12 +207,17 @@ def main(args: Args):
     lrs = args.learning_rate
     clip_coef = args.clip_coef
     ent_coef = args.ent_coef
-    for i, (problem, seed) in enumerate(zip(args.test_problems, args.test_seeds)):
-        logger.info(f"Testing by training on {problem}")
+    for i, (problem, seed) in enumerate(zip(args.test_problems, args.test_env_seeds)):
+        logger.info(f"Testing by training on {problem}, env_seed={seed}")
+        args.batch_size = int(args.num_envs * args.num_steps)
+        args.minibatch_size = int(args.batch_size // args.num_minibatches)
+        args.num_iterations = args.total_timesteps // args.batch_size
         args.learning_rate = lrs[i]
         args.clip_coef = clip_coef[i]
         args.ent_coef = ent_coef[i]
-        test_exp_id = f'{args.test_exp_id}_lr{args.learning_rate}_clip{args.clip_coef}_ent{args.ent_coef}'
+        args.test_seed = seed
+        args.test_problem = problem
+        test_exp_id = f'{args.test_exp_id}_lr{args.learning_rate}_clip{args.clip_coef}_ent{args.ent_coef}_envsd{seed}'
         train_ppo_with_options(options, test_exp_id, seed, args, logger)
         utils.logger_flush(logger)
 
@@ -222,26 +231,18 @@ if __name__ == "__main__":
         f'_gw{args.game_width}_h{args.hidden_size}_l1{args.l1_lambda}'
     args.log_path = os.path.join(args.log_path, args.exp_id, f"seed={args.seed}", args.test_exp_id)
 
-    # Setting problem names
-    if args.env_id == "ComboGrid":
-        args.problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
-    elif args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-        args.problems = [args.env_id + f"_{seed}" for seed in args.env_seeds]
-
     # Setting test seeds and test problem names
-    if isinstance(args.test_seeds, list) or isinstance(args.test_seeds, tuple):
-        args.test_seeds = list(map(int, args.test_seeds))
-    elif isinstance(args.test_seeds, str):
-        start, end = map(int, args.test_seeds.split(","))
-        args.test_seeds = list(range(start, end + 1))
+    if isinstance(args.test_env_seeds, list) or isinstance(args.test_env_seeds, tuple):
+        args.test_env_seeds = list(map(int, args.test_env_seeds))
+    elif isinstance(args.test_env_seeds, str):
+        start, end = map(int, args.test_env_seeds.split(","))
+        args.test_env_seeds = list(range(start, end + 1))
     else:
         raise NotImplementedError
     
     if args.test_env_id == "ComboGrid":
-        args.test_problems = ["TL-BR", "TR-BL", "BR-TL", "BL-TR"]
-        args.test_seeds = args.test_seeds * (len(args.test_problems)//len(args.test_seeds) + 1)
-        args.test_seeds = args.test_seeds[:len(args.test_problems)]
+        args.test_problems = [COMBOGRID_NAMES[i] for i in args.test_env_seeds]
     elif args.test_env_id == "MiniGrid-FourRooms-v0":
-        args.test_problems = [args.test_env_id + str(seed) for seed in args.test_seeds]
+        args.test_problems = [args.test_env_id + str(seed) for seed in args.test_env_seeds]
 
     main(args)

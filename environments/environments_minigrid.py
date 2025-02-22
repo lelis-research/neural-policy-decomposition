@@ -103,7 +103,7 @@ class MiniGridWrap(gym.Env):
         ]
         self.goal_position = (
             int(self.goal_position[0] / self.env.unwrapped.height),
-            self.goal_position[0] % self.env.unwrapped.width,
+            self.goal_position[0] % self.env.unwrapped.height,
         )
         if init_loc and init_dir:
             self.env.unwrapped.agent_pos = np.array(init_loc)
@@ -145,7 +145,7 @@ def get_training_tasks_simplecross(view_size=7, seed=0):
     return MiniGridWrap(
                 gymnasium.make("MiniGrid-SimpleCrossingS9N1-v0"),
                 seed=seed, max_episode_steps=1000, n_discrete_actions=3,
-                view_size=view_size)
+                view_size=view_size, step_reward=-1)
 
 
 def get_test_tasks_fourrooms(view_size=7, seed=0):
