@@ -7,7 +7,46 @@ import torch.nn.functional as F
 # from pipelines.test_on_every_cell import Args as EachCellTestArgs
 from agents.policy_guided_agent import PPOAgent
 from environments.environments_combogrid_gym import ComboGym
+from environments.environments_combogrid import DIRECTIONS, PROBLEM_NAMES as COMBO_PROBLEM_NAMES
 from environments.environments_minigrid import get_training_tasks_simplecross
+
+
+def regenerate_trajectories(args, verbose=False, logger=None):
+    """
+    This function loads one trajectory for each problem stored in variable "problems".
+
+    The trajectories are returned as a dictionary, with one entry for each problem. 
+    """
+    def get_single_environment(args, seed):
+        if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
+            env = get_training_tasks_simplecross(view_size=args.game_width, seed=seed)
+        elif args.env_id == "ComboGrid":
+            problem = COMBO_PROBLEM_NAMES[seed]
+            env = ComboGym(rows=args.game_width, columns=args.game_width, problem=problem)
+        else:
+            raise NotImplementedError
+        return env
+    
+    trajectories = {}
+    
+    for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
+        model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
+        env = get_single_environment(args, seed=seed)
+        
+        if verbose:
+            logger.info(f"Loading Trajectories from {model_path} ...")
+        
+        agent = PPOAgent(env, hidden_size=args.hidden_size)
+        
+        agent.load_state_dict(torch.load(model_path))
+
+        trajectory = agent.run(env, verbose=verbose)
+        trajectories[problem] = trajectory
+
+        if verbose:
+            logger.info(f"The trajectory length: {len(trajectory.get_state_sequence())}")
+
+    return trajectories
 
 
 class LevinLossActorCritic:
@@ -206,6 +245,12 @@ class LevinLossActorCritic:
             game_width = args.game_width
         else:
             raise NotImplementedError
+        
+        trajectories = regenerate_trajectories(args)
+        for problem, t in trajectories.items():
+            actions = t.get_action_sequence()
+            t_str = [DIRECTIONS[tuple(actions[i:i+3])] for i in range(0, t.get_length(), 3)]
+            print(f"Problem {problem}, model trajectory: {t_str}, {t.get_logits_sequence()}")
         
         for idx, agent in enumerate(options):
             # Evaluating the performance of options
