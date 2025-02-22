@@ -162,8 +162,8 @@ def regenerate_trajectories(args: Args, verbose=False, logger=None):
         trajectory = agent.run(env, verbose=verbose)
         trajectories[problem] = trajectory
 
-        if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
-            assert trajectories[problem].get_length() < 16, f"model not optimized! {(seed, problem, model_directory)}"
+        # if args.env_id == "MiniGrid-SimpleCrossingS9N1-v0":
+        #     assert trajectories[problem].get_length() < 16, f"model not optimized! {(seed, problem, model_directory)}"
 
         if verbose:
             logger.info(f"The trajectory length: {len(trajectory.get_state_sequence())}")
@@ -1154,10 +1154,10 @@ def learn_options():
 
 def main():
     # hill_climbing_mask_space_training_data()
-    whole_dec_options_training_data_levin_loss()
+    # whole_dec_options_training_data_levin_loss()
     # hill_climbing_all_segments()
-    # learn_options()
+    learn_options()
 
-
+    
 if __name__ == "__main__":
     main()

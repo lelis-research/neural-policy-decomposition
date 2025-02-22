@@ -139,14 +139,16 @@ def visualize_envs(args):
             env = get_training_tasks_simplecross(view_size=args.game_width, seed=seed)
         elif args.env_id == "MiniGrid-FourRooms-v0":
             env = get_test_tasks_fourrooms(view_size=args.game_width, seed=seed)
-        visualize(env, verbose=False)
+        visualize(env, verbose=True)
 
 
 def main(args):
     # visualize_trained_agents(args)
     # args.seeds = (0, 1, 2)
-    args.seeds = range(1, 25)
-    args.env_id = "MiniGrid-FourRooms-v0"
+    # args.seeds = range(1, 25)
+    args.seeds = [0]
+    # args.env_id = "MiniGrid-FourRooms-v0"
+    args.env_id = "MiniGrid-SimpleCrossingS9N1-v0"
     # try_on_other_environments(args)
     visualize_envs(args)
     # visualize_on_four_rooms(args)
