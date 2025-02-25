@@ -222,7 +222,7 @@ class PPOAgent(nn.Module):
             if not deterministic:
                 action = probs.sample()
             else:
-                action = probs.probs.max(dim=0).item()
+                action = probs.probs.max(dim=0)[1]
         return action, probs.log_prob(action), probs.entropy(), self.critic(x), logits
     
     def to_option(self, mask, option_size, problem):

@@ -26,7 +26,7 @@ class Args:
     choices from [ComboGrid, MiniGrid-SimpleCrossingS9N1-v0, MiniGrid-FourRooms-v0]
     """
     # env_seeds: Union[List[int], str] = (0,1,2) # SimpleCrossing
-    env_seeds: Union[List[int], str] = (3,) # ComboGrid
+    env_seeds: Union[List[int], str] = (0,1,2,3) # ComboGrid
     # env_seeds: Union[List[int], str] = (41,51,8) # FourRooms
     # env_seeds: Union[List[int], str] = (8,) # FourRooms
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'.
@@ -52,7 +52,7 @@ class Args:
     # hyperparameter arguments
     game_width: int = 5
     """the length of the combo/mini-grid square"""
-    hidden_size: int = 64
+    hidden_size: int = 6
     """"""
     l1_lambda: float = 0
     """"""
