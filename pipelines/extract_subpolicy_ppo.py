@@ -875,6 +875,7 @@ def learn_options(args: Args, logger: logging.Logger):
 
     all_masks_info = []
 
+    # TODO: learn masks on trajectories of different problems, fine tunning also happens in the same manner
     for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
         model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
         logger.info(f'Extracting from the agent trained on {problem}, env_seed={seed}')
