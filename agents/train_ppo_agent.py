@@ -48,7 +48,7 @@ def train_model(problem="test", option_dir=None):
     use_options = 0
     if option_dir is not None:
         use_options = 1
-    run_name = f"{seed}/{problem}-lr{args.learning_rate}-num_step{args.num_steps}-clip_coef{args.clip_coef}-ent_coef{args.ent_coef}-epoch{args.update_epochs}-vloss{args.clip_vloss}-visit{args.visitation_bonus}-actor{args.actor_layer_size}-critic{args.critic_layer_size}"
+    run_name = f"{problem}-lr{args.learning_rate}-num_step{args.num_steps}-clip_coef{args.clip_coef}-ent_coef{args.ent_coef}-epoch{args.update_epochs}-vloss{args.clip_vloss}-visit{args.visitation_bonus}-actor{args.actor_layer_size}-critic{args.critic_layer_size}"
     print(run_name)
     if args.track:
         import wandb
@@ -90,7 +90,7 @@ def train_model(problem="test", option_dir=None):
     if args.rnn_type == 'lstm':
         agent = LstmAgent(envs, args.hidden_size).to(device)
     elif args.rnn_type == 'gru':
-        agent = GruAgent(envs, args.hidden_size, feature_extractor=False, option_len=len(options), quantized=args.quantized).to(device)
+        agent = GruAgent(envs, args.hidden_size, feature_extractor=True, option_len=len(options), quantized=args.quantized, critic_layer_size=args.critic_layer_size, actor_layer_size=args.actor_layer_size).to(device)
     else:
         print("Unknown type of model. Please choose between either LSTM or GRU.")
         exit()
@@ -315,5 +315,5 @@ def train_model(problem="test", option_dir=None):
     torch.save(agent.state_dict(), f'training_data/models-all-samples/{args.seed}/{run_name}.pt')
 
 if __name__ == "__main__":
-    train_model(option_dir="training_data/optionsselected_options_width_5.pkl")
+    train_model(option_dir="training_data/options/selected_options_width_5.pkl")
     # train_model(option_dir=None)
