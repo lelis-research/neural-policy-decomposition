@@ -313,8 +313,8 @@ def train_model(problem="test", option_dir=None):
                     })
     envs.close()
     writer.close()
-    if not os.path.exists(f'training_data/crossing'):
-        os.makedirs(f'training_data/crossing')
+    if not os.path.exists(f'training_data/crossing/{args.seed}'):
+        os.makedirs(f'training_data/crossing/{args.seed}')
     torch.save(agent.state_dict(), f'training_data/crossing/{args.seed}/{run_name}.pt')
 
 if __name__ == "__main__":

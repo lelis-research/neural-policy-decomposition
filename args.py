@@ -11,7 +11,7 @@ class Args:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
-    track: bool = True
+    track: bool = False
     """if toggled, this experiment will be tracked with Weights and Biases"""
     wandb_project_name: str = "PPOwithRandomInitial3x3"
     """the wandb's project name"""
@@ -66,7 +66,7 @@ class Args:
     "l1 lambda regularization"
     hidden_size: int = 64
     "size of RNN hidden states"
-    problem: str = "BR-TL"
+    problem: str = "simple-crossing"
     "Name of the problem. Registered ones: simple-crossing, TL-BR, TR-BL, BL-TR, BR-TL, test(for combogrid)"
     fine_tune: bool = False
     "toggles fine tuning mode"
