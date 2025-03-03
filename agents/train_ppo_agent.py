@@ -40,7 +40,7 @@ def train_model(problem="test", option_dir=None):
     use_options = 0
     if option_dir is not None:
         use_options = 1
-    run_name = f"{args.rnn_type}-{args.hidden_size}-{args.episode_length}-{args.num_steps}-{problem}-{args.seed}-{use_options}-{args.quantized}"
+    run_name = f"{problem}-lr{args.learning_rate}-num_step{args.num_steps}-clip_coef{args.clip_coef}-ent_coef{args.ent_coef}-epoch{args.update_epochs}-vloss{args.clip_vloss}-visit{args.visitation_bonus}-actor{args.actor_layer_size}-critic{args.critic_layer_size}"
     print(run_name)
     if args.track:
         import wandb
@@ -54,7 +54,7 @@ def train_model(problem="test", option_dir=None):
             monitor_gym=False,
             save_code=False,
         )
-    writer = SummaryWriter(f"logs/{run_name}")
+    writer = SummaryWriter(f"logs/all-samples/{args.seed}/{run_name}")
     writer.add_text(
         "hyperparameters",
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
@@ -167,7 +167,7 @@ def train_model(problem="test", option_dir=None):
             if "final_info" in infos:
                 for info in infos["final_info"]:
                     if info and "episode" in info:
-                        print(f"global_step={global_step}, episodic_return={info["episode"]["r"]}, {info["episode"]["l"]}")
+                        # print(f"global_step={global_step}, episodic_return={info["episode"]["r"]}, {info["episode"]["l"]}")
                         # writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                         # writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
                         episodic_l_avg += info["episode"]["l"][0]
@@ -314,8 +314,8 @@ def train_model(problem="test", option_dir=None):
     envs.close()
     writer.close()
     if not os.path.exists(f'training_data/crossing'):
-        os.mkdir(f'training_data/crossing')
-    torch.save(agent.state_dict(), f'training_data/crossing/{args.seed}.pt')
+        os.makedirs(f'training_data/crossing')
+    torch.save(agent.state_dict(), f'training_data/crossing/{args.seed}/{run_name}.pt')
 
 if __name__ == "__main__":
     # train_model(option_dir="training_data/optionsselected_options_width_5.pkl")

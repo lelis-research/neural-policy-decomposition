@@ -30,7 +30,7 @@ class ArgsTest:
     """the learning rate of the optimizer"""
     value_learning_rate: float = 1e-4
     """the learning rate of the optimizer for value network"""
-    num_envs: int = 1
+    num_envs: int = 8
     """the number of parallel game environments"""
     num_steps: int = 120
     """the number of steps to run in each environment per policy rollout"""

@@ -9,7 +9,6 @@ import torch.optim as optim
 import tyro
 from torch.utils.tensorboard import SummaryWriter
 
-
 from envs.combogrid import ComboGridEnv
 from envs.combogrid_gym import ComboGridGym
 from args_test import ArgsTest
@@ -44,7 +43,7 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
     seed = args.seed
     if option_dir is not None:
         use_options = 1
-    run_name = f"{problem}-lr{args.learning_rate}-num_step{args.num_steps}-clip_coef{args.clip_coef}-ent_coef{args.ent_coef}-epoch{args.update_epochs}-vloss{args.clip_vloss}-visit{args.visitation_bonus}"
+    run_name = f"{seed}/{problem}-lr{args.learning_rate}-num_step{args.num_steps}-clip_coef{args.clip_coef}-ent_coef{args.ent_coef}-epoch{args.update_epochs}-vloss{args.clip_vloss}-visit{args.visitation_bonus}-actor{args.actor_layer_size}-critic{args.critic_layer_size}"
     print(run_name)
     if args.track:
         import wandb
@@ -58,7 +57,7 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
             monitor_gym=False,
             save_code=False,
         )
-    writer = SummaryWriter(f"logs/uniform/{seed}/{run_name}")
+    writer = SummaryWriter(f"logs/{seed}/{run_name}")
     writer.add_text(
         "hyperparameters",
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
@@ -94,11 +93,11 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
         agent = GruAgent(envs, args.hidden_size).to(device)     
         agent.load_state_dict(torch.load("training_data/models/gru-32-l1_1e-03-l2_0e+00-BL-TR.pt"))
         agent.train()
-    optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-3, weight_decay=args.weight_decay)
-#     optimizer = optim.Adam([
-#     {'params': agent.critic.parameters(), 'lr': args.value_learning_rate, 'name':'value'},
-#     {'params': [p for name, p in agent.named_parameters() if "critic" not in name], 'lr': args.learning_rate, 'eps':1e-5, 'weight_decay':args.weight_decay, 'name':'other'}
-# ])
+    # optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-3, weight_decay=args.weight_decay)
+    optimizer = optim.Adam([
+    {'params': agent.critic.parameters(), 'lr': args.value_learning_rate, 'name':'value'},
+    {'params': [p for name, p in agent.named_parameters() if "critic" not in name], 'lr': args.learning_rate, 'eps':1e-4, 'weight_decay':args.weight_decay, 'name':'other'}
+])
     # ALGO Logic: Storage setup
     # obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
     # actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
@@ -229,7 +228,7 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
             continue
 
         # print('Training positive')
-        print("global step: ", global_step)
+        # print("global step: ", global_step)
         rewards = torch.cat(rewards)
         values = torch.cat(values)
         # bootstrap value if not done
@@ -460,7 +459,7 @@ def train_model_positive(problem="test", option_dir=None, seed=0):
     envs.close()
     writer.close()
 
-    torch.save(agent.state_dict(), f'training_data/models_sweep_input_v2/uniform/{seed}/{problem}-lr{args.learning_rate}-num_step{args.num_steps}-clip_coef{args.clip_coef}-ent_coef{args.ent_coef}-epoch{args.update_epochs}-vloss{args.clip_vloss}-visit{args.visitation_bonus}-actor{args.actor_layer_size}-critic{args.critic_layer_size}.pt')
+    torch.save(agent.state_dict(), f'training_data/models_sweep/{seed}/{problem}-lr{args.learning_rate}-num_step{args.num_steps}-clip_coef{args.clip_coef}-ent_coef{args.ent_coef}-epoch{args.update_epochs}-vloss{args.clip_vloss}-visit{args.visitation_bonus}-actor{args.actor_layer_size}-critic{args.critic_layer_size}.pt')
 
 
 if __name__ == "__main__":
