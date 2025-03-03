@@ -96,7 +96,7 @@ class LstmAgent(nn.Module):
         return action, probs.log_prob(action), probs.entropy(), self.critic(concatenated), lstm_state
 
 class GruAgent(nn.Module):
-    def __init__(self, envs, h_size=64, feature_extractor=False, greedy=False, option_len=0, quantized=0, actor_layer_size=64, critic_layer_size=64):
+    def __init__(self, envs, h_size=64, feature_extractor=False, greedy=False, quantized=0, actor_layer_size=64, critic_layer_size=64):
         super().__init__()
         self.input_to_actor = True
         self.hidden_size = h_size

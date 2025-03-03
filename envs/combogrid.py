@@ -264,10 +264,16 @@ class ComboGridEnv:
                     self._goals_reached.add((self._x, self._y))
                     self._matrix_goal[self._x][self._y] = 0
                     reach_goal = True
+
+                elif self._goal == None and (self._x, self._y) == (self._x_goal, self._y_goal):
+                    reach_goal = True
+
+
+
             self._state = []
         if self._visitation_bonus:
             self._state_visitation_count[copy.deepcopy(tuple(self._matrix_unit.ravel()))] += 1
         return reach_goal
 
     def get_exploration_bonus(self):
-        return 0.5 / (self._state_visitation_count[copy.deepcopy(tuple(self._matrix_unit.ravel()))] ** 0.5)
+        return 0.25 / (self._state_visitation_count[copy.deepcopy(tuple(self._matrix_unit.ravel()))] ** 0.5)

@@ -24,15 +24,15 @@ class Args:
     # env_id: str = "BreakoutNoFrameskip-v4"
     env_id: str = "ComboGrid-v0"
     """the id of the environment"""
-    total_timesteps: int = 7000000
+    total_timesteps: int = 3000000
     """total timesteps of the experiments"""
-    learning_rate: float = 2.5e-4
+    learning_rate: float = 5e-4
     """the learning rate of the optimizer"""
-    value_learning_rate: float = 1.5e-4
+    value_learning_rate: float = 5e-4
     """the learning rate of the optimizer for value network"""
-    num_envs: int = 8
+    num_envs: int = 16
     """the number of parallel game environments"""
-    num_steps: int = 60
+    num_steps: int = 80
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: int = 1
     """Toggle learning rate annealing for policy and value networks"""
@@ -46,11 +46,11 @@ class Args:
     """the K epochs to update the policy"""
     norm_adv: bool = True
     """Toggles advantages normalization"""
-    clip_coef: float = 0.3
+    clip_coef: float = 0.2
     """the surrogate clipping coefficient"""
-    clip_vloss: int = 1
+    clip_vloss: int = 0
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
-    ent_coef: float = 0.07
+    ent_coef: float = 0.02
     """coefficient of the entropy"""
     vf_coef: float = 0.5
     """coefficient of the value function"""
@@ -66,19 +66,23 @@ class Args:
     "l1 lambda regularization"
     hidden_size: int = 64
     "size of RNN hidden states"
-    problem: str = "test"
-    "Problem"
+    problem: str = "BR-TL"
+    "Name of the problem. Registered ones: simple-crossing, TL-BR, TR-BL, BL-TR, BR-TL, test(for combogrid)"
     fine_tune: bool = False
     "toggles fine tuning mode"
-    episode_length: int = 20
+    episode_length: int = 35
     "maximum episode length"
-    game_width: int = 3
+    game_width: int = 5
     "the width of the grid"
     visitation_bonus: int = 1
     "toggles using visitation bonus in calculating reward"
+    actor_layer_size: int = 64
+    "actor layer size"
+    critic_layer_size: int = 64
+    "critic layer size"
     use_options: int = 0
     "set to 0 for not using options, and 1 for using options when training"
-    quantized: int = 0
+    quantized: int = 1
     "set to 0 for models without quantized hidden states, and 1 models with quantized hidden states"
 
     # to be filled in runtime

@@ -15,22 +15,14 @@ from torch.utils.tensorboard import SummaryWriter
 
 from envs.combogrid import ComboGridEnv
 from envs.combogrid_gym import ComboGridGym
+from utils.functions import make_env_simple_crossing
+from utils.functions import make_combogrid_env
 from args import Args
 from args_test import ArgsTest
 from models.model_recurrent import LstmAgent, GruAgent
 print("Importing libs completed")
 
     
-def make_env(problem, episode_length=None, width=3, visitation_bonus=1, options=[]):
-    def thunk():
-        if len(options) > 0:
-            env = ComboGridGym(rows=width, columns=width, problem=problem, random_initial=False, episode_length=episode_length, options=options, visitation_bonus=visitation_bonus)
-        else:
-            env = ComboGridGym(rows=width, columns=width, problem=problem, random_initial=True, episode_length=episode_length, visitation_bonus=visitation_bonus)
-        env = gym.wrappers.RecordEpisodeStatistics(env)
-        return env
-
-    return thunk
 
 def _l1_norm(model, lambda_l1):
     l1_loss = 0
@@ -41,7 +33,7 @@ def _l1_norm(model, lambda_l1):
     return lambda_l1 * l1_loss
 
 def train_model(problem="test", option_dir=None):
-    args = tyro.cli(ArgsTest)
+    args = tyro.cli(Args)
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
@@ -71,7 +63,7 @@ def train_model(problem="test", option_dir=None):
     if use_options == 1:
         with open(option_dir, "rb") as file:
             options = pickle.load(file)
-    options = [ 3, 4, 5, 6]
+        # options = [ 3, 4, 5, 6]
 
     # TRY NOT TO MODIFY: seeding
     random.seed(args.seed)
@@ -82,15 +74,21 @@ def train_model(problem="test", option_dir=None):
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    envs = gym.vector.SyncVectorEnv(
-        [make_env(problem, args.episode_length, args.game_width, args.visitation_bonus, options) for i in range(args.num_envs)],
-    )
+    if args.problem == "simple-crossing":
+        envs = gym.vector.SyncVectorEnv(
+            [make_env_simple_crossing(view_size=3, seed=args.seed, max_episode_steps=args.episode_length) for i in range(args.num_envs)],
+            )
+    else:
+        envs = gym.vector.SyncVectorEnv(
+            [make_combogrid_env(args.problem, args.episode_length, args.game_width, args.visitation_bonus, options) for i in range(args.num_envs)],
+        )
+    
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
     if args.rnn_type == 'lstm':
         agent = LstmAgent(envs, args.hidden_size).to(device)
     elif args.rnn_type == 'gru':
-        agent = GruAgent(envs, args.hidden_size, feature_extractor=False, option_len=len(options), quantized=args.quantized).to(device)
+        agent = GruAgent(envs, args.hidden_size, feature_extractor=True, quantized=args.quantized, critic_layer_size=args.critic_layer_size, actor_layer_size=args.actor_layer_size).to(device)
     else:
         print("Unknown type of model. Please choose between either LSTM or GRU.")
         exit()
@@ -100,7 +98,7 @@ def train_model(problem="test", option_dir=None):
         agent.train()
     # optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5, weight_decay=args.weight_decay)
     optimizer = optim.Adam([
-    {'params': agent.critic.parameters(), 'lr': args.value_learning_rate, 'name':'value'},
+    {'params': agent.critic.parameters(), 'lr': args.value_learning_rate,'eps':1e-5, 'name':'value'},
     {'params': [p for name, p in agent.named_parameters() if "critic" not in name], 'lr': args.learning_rate, 'eps':1e-5, 'weight_decay':args.weight_decay, 'name':'other'}
 ])
     # ALGO Logic: Storage setup
@@ -169,19 +167,14 @@ def train_model(problem="test", option_dir=None):
             if "final_info" in infos:
                 for info in infos["final_info"]:
                     if info and "episode" in info:
-                        # print(f"global_step={global_step}, episodic_return={info["episode"]}")
-                        writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-                        writer.add_scalar("charts/episodic_length", info["l"], global_step)
-                        episodic_l_avg += info["l"]
+                        print(f"global_step={global_step}, episodic_return={info["episode"]["r"]}, {info["episode"]["l"]}")
+                        # writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+                        # writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+                        episodic_l_avg += info["episode"]["l"][0]
                         episodic_r_avg += info["episode"]["r"][0]
-                        episodic_goal_avg += info["g"]
                         counter += 1
         episodic_l_avg /= float(counter)
         episodic_r_avg /= float(counter)
-        episodic_goal_avg /= float(counter)
-        # print(episodic_l_avg)
-        # if args.track:
-        #     wandb.log({"episodic_return":episodic_r_avg , "episodic_length": episodic_l_avg})
 
         # bootstrap value if not done
         with torch.no_grad():
@@ -307,13 +300,23 @@ def train_model(problem="test", option_dir=None):
         print("SPS:", int(global_step / (time.time() - start_time)))
         writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
         if args.track:
-            wandb.log({"value_loss": v_loss.item(), "policy_loss":pg_loss.item(),"entropy":entropy_loss.item(), "lr": optimizer.param_groups[0]["lr"],  "clipfac":np.mean(clipfracs), "old_approx_kl": old_approx_kl.item(), "approx_kl": approx_kl.item(), "explained_variance": explained_var, "episodic_return":episodic_r_avg ,"episodic_goals_reached":episodic_goal_avg, "episodic_length": episodic_l_avg})
+            wandb.log({"value_loss": v_loss.item(),
+                       "policy_loss":pg_loss.item(),
+                       "entropy":entropy_loss.item(),
+                        "lr": optimizer.param_groups[0]["lr"],
+                        "clipfac":np.mean(clipfracs),
+                        "old_approx_kl": old_approx_kl.item(),
+                        "approx_kl": approx_kl.item(),
+                        "explained_variance": explained_var,
+                        "episodic_return":episodic_r_avg ,
+                        "episodic_length": episodic_l_avg
+                    })
     envs.close()
     writer.close()
-    if not os.path.exists(f'training_data/models/{args.seed}'):
-        os.mkdir(f'training_data/models/{args.seed}')
-    torch.save(agent.state_dict(), f'training_data/models/{args.seed}/{problem}-{use_options}.pt')
+    if not os.path.exists(f'training_data/crossing'):
+        os.mkdir(f'training_data/crossing')
+    torch.save(agent.state_dict(), f'training_data/crossing/{args.seed}.pt')
 
 if __name__ == "__main__":
-    train_model(option_dir="training_data/optionsselected_options_width_5.pkl")
-    # train_model(option_dir=None)
+    # train_model(option_dir="training_data/optionsselected_options_width_5.pkl")
+    train_model(option_dir=None)

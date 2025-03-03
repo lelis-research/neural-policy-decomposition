@@ -3,7 +3,7 @@ import numpy as np
 from envs.combogrid import ComboGridEnv
 
 class ComboGridGym(gym.Env):
-    def __init__(self, rows=3, columns=3, problem="TL-BR", options=None, partial_observability=True, random_initial=False, episode_length=None, visitation_bonus=1):
+    def __init__(self, rows=3, columns=3, problem="TL-BR", options=[], partial_observability=True, random_initial=False, episode_length=None, visitation_bonus=1):
         self._game = ComboGridEnv(rows, columns, problem, partial_observability, random_initial, visitation_bonus)
         self._rows = rows
         self._columns = columns
@@ -77,13 +77,13 @@ class ComboGridGym(gym.Env):
                 if not reach_goal:
                     reward += 0 + self._game.get_exploration_bonus()
                 else:
-                    reward += 1 + self._game.get_exploration_bonus()
+                    reward += 10 + self._game.get_exploration_bonus()
                     self.goals_reached += 1
             else:
                 if not reach_goal:
                     reward += 0
                 else:
-                    reward += 1
+                    reward += 10 - 0.9 * (self.n_steps / self.ep_len)
                     self.goals_reached += 1
 
 
