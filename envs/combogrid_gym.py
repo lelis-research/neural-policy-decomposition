@@ -17,6 +17,7 @@ class ComboGridGym(gym.Env):
         self.ep_len = 500
         if episode_length is not None:
             self.ep_len = episode_length
+        self.reset()
 
     def _get_obs(self):
         return self._game.get_observation()
@@ -25,11 +26,40 @@ class ComboGridGym(gym.Env):
         self._game.reset()
         self.n_steps = 0
         self.goals_reached = 0
+        self.truncated = False
+        self.terminated = False
         return self._get_obs(), {}
     
+    def _calculate_reward(self, action):
+        reward = 0
+        reach_goal = self._game.apply_action(action)
+        self.n_steps += 1
+
+        if self._visitation_bonus:
+            if not reach_goal:
+                reward += -1 + self._game.get_exploration_bonus()
+            else:
+                reward += 1 + self._game.get_exploration_bonus()
+                self.goals_reached += 1
+        else:
+            if not reach_goal:
+                reward += -1
+            else:
+                reward += 1
+                self.goals_reached += 1
+
+        if self._game.is_over(): 
+            self.terminated = True
+            return reward
+        if self.n_steps == self.ep_len:
+            self.truncated = True
+            return reward
+        return reward
+    
     def step(self, action:int):
-        trunctuated = False
+        self.truncated = False
         action = int(action)
+        reward = 0
         #reward is 0 in goal state and -1 everywhere else
         #add exploration bonus to reward to encourage agent to visit less visited states
         if action > 2:
@@ -44,58 +74,20 @@ class ComboGridGym(gym.Env):
             elif action == 6:
                 actions = [1, 0, 2] #RIGHT
             if is_applicable:
-                reward = 0
                 for a in actions:
-                    reach_goal = self._game.apply_action(a)
-                    self.n_steps += 1
-                    if not self._game.is_over():
-                        if self._visitation_bonus:
-                            if not reach_goal:
-                                reward += 0 + self._game.get_exploration_bonus()
-                            else:
-                                reward += 1 + self._game.get_exploration_bonus()
-                                self.goals_reached += 1
-                        else:
-                            if not reach_goal:
-                                reward += 0
-                            else:
-                                reward += 1
-                                self.goals_reached += 1
-                    else:
-                        reward += 1
-                        self.goals_reached += 1
+                    reward += self._calculate_reward(a)
+                    if self.truncated or self.terminated:
                         break
-                    if self.n_steps == self.ep_len:
-                        trunctuated = True
-                        break
-
         else:
-            reach_goal = self._game.apply_action(action)
-            reward = 0
-            self.n_steps += 1
-            if self._visitation_bonus:
-                if not reach_goal:
-                    reward += 0 + self._game.get_exploration_bonus()
-                else:
-                    reward += 10 + self._game.get_exploration_bonus()
-                    self.goals_reached += 1
-            else:
-                if not reach_goal:
-                    reward += 0
-                else:
-                    reward += 10 - 0.9 * (self.n_steps / self.ep_len)
-                    self.goals_reached += 1
-
-
-        terminated = self._game.is_over()
+            reward += self._calculate_reward(action)
 
         #info about each step, Not being used 
         info = self._game.__repr__()
 
         #Max steps each episode, will probably remove it
         if self.n_steps == self.ep_len:
-            trunctuated = True
+            self.truncated = True
 
         
-        return self._get_obs(), reward, terminated, trunctuated, {"l":self.n_steps, "r":reward, "g":self.goals_reached}
+        return self._get_obs(), reward, self.terminated, self.truncated, {"l":self.n_steps, "r":reward, "g":self.goals_reached}
     

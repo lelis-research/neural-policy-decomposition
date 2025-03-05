@@ -180,6 +180,8 @@ class GruAgent(nn.Module):
         return self.critic(concatenated)
 
     def get_action_and_value(self, x, gru_state, done, action=None):
+        if len(x.shape) == 1:  # If no batch dimension
+            x = x[None, ...]
         if self.input_to_actor:
             hidden, gru_state = self.get_states(x, gru_state, done)
             concatenated = torch.cat((hidden, x), dim=1)

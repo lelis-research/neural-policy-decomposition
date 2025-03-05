@@ -5,7 +5,7 @@ from dataclasses import dataclass
 class Args:
     exp_name: str = os.path.basename(__file__)[: -len(".py")]
     """the name of this experiment"""
-    seed: int = 0
+    seed: int = 1
     """seed of the experiment"""
     torch_deterministic: bool = True
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
@@ -24,7 +24,7 @@ class Args:
     # env_id: str = "BreakoutNoFrameskip-v4"
     env_id: str = "ComboGrid-v0"
     """the id of the environment"""
-    total_timesteps: int = 3000000
+    total_timesteps: int = 5000000
     """total timesteps of the experiments"""
     learning_rate: float = 5e-4
     """the learning rate of the optimizer"""
@@ -42,7 +42,7 @@ class Args:
     """the lambda for the general advantage estimation"""
     num_minibatches: int = 4
     """the number of mini-batches"""
-    update_epochs: int = 6
+    update_epochs: int = 10
     """the K epochs to update the policy"""
     norm_adv: bool = True
     """Toggles advantages normalization"""
@@ -50,7 +50,7 @@ class Args:
     """the surrogate clipping coefficient"""
     clip_vloss: int = 0
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
-    ent_coef: float = 0.02
+    ent_coef: float = 0.05
     """coefficient of the entropy"""
     vf_coef: float = 0.5
     """coefficient of the value function"""
@@ -66,8 +66,10 @@ class Args:
     "l1 lambda regularization"
     hidden_size: int = 64
     "size of RNN hidden states"
-    problem: str = "simple-crossing"
-    "Name of the problem. Registered ones: simple-crossing, TL-BR, TR-BL, BL-TR, BR-TL, test(for combogrid)"
+    env_name: str = "combogrid"
+    "Name of the env. Registered ones: simple-crossing, combogrid"
+    problem_index: int = 0
+    "Index corresponding to different problems. Refer to constants.py"
     fine_tune: bool = False
     "toggles fine tuning mode"
     episode_length: int = 35

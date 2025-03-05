@@ -143,7 +143,7 @@ def _rollout(agent, env):
     _h = None
     return traj
 
-def extract_options(seed=1, width=3):
+def extract_options(seed=1, game_width=5, problem=[]):
     """
     This is the function to perform the selection of sub-automata from the automaton extract from recurrent models.
 
@@ -162,7 +162,7 @@ def extract_options(seed=1, width=3):
 
         # env = ComboGridEnv(5, 5, problems[i])
         env = gym.vector.SyncVectorEnv(
-        [make_env(problems[i], width=width)],
+        [make_env(problems[i], width=game_width)],
     )
         rnn = GruAgent(env,64, option_len=0, greedy=True)
         rnn.load_state_dict(torch.load(f'training_data/models/{seed}/{problems[i]}.pt'))

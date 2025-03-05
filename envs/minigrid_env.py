@@ -45,7 +45,7 @@ class MiniGridWrap(gym.Env):
         #     int(self.goal_position[0] / self.env.height),
         #     self.goal_position[0] % self.env.width,
         # )
-        # self.agent_pos = self.env.agent_pos
+        self.agent_pos = self.env.agent_pos
 
     def setup_options(self, options):
         self.action_space = gym.spaces.Discrete(self.action_space.n + len(options))
@@ -91,7 +91,10 @@ class MiniGridWrap(gym.Env):
             pass
         else:
             _, reward, terminated, truncated, _ = self.env.step(action)
-            reward += self.step_reward
+            if not terminated:
+                reward = self.step_reward
+            else:
+                reward = 1
         return self.observation(), reward, terminated, truncated, {}
 
     def reset(self, seed=None, options=None):
