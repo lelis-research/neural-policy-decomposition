@@ -26,7 +26,7 @@ from utils.utils import timing_decorator
 
 @dataclass
 class Args:
-    exp_name: str = "extract_learnOptions_randomInit"
+    exp_name: str = "extract_decOption_randomInit"
     # exp_name: str = "extract_decOptionWhole_sparseInit"
     # exp_name: str = "extract_learnOptions_randomInit_discreteMasks"
     # exp_name: str = "extract_learnOptions_randomInit_pitisFunction"
@@ -1001,6 +1001,12 @@ def evaluate_all_masks_for_model(masks, agents, num_steps, problem, trajectories
                             
     return best_mask, best_value
 
+
+def evaluate_all_masks_parallel(args_tuple):
+    """Wrapper function to call evaluate_all_masks_for_model with unpacked arguments."""
+    return evaluate_all_masks_for_model(*args_tuple)
+
+
 @timing_decorator
 def evaluate_all_masks_levin_loss(args: Args, logger: logging.Logger):
     """
@@ -1039,22 +1045,53 @@ def evaluate_all_masks_levin_loss(args: Args, logger: logging.Logger):
             agent = PPOAgent(envs=env, hidden_size=args.hidden_size, discrete_masks=True)
             agent.load_state_dict(torch.load(model_path))
 
-            for num_step in range(2, max_length + 1):
-                mask, levin_loss = evaluate_all_masks_for_model(masks=selected_masks, 
-                                                                agents=selected_options + [agent], 
-                                                                num_steps=selected_options_lengths + [num_step],
-                                                                problem=problem, 
-                                                                trajectories=trajectories,
-                                                                loss_evaluator=loss_evaluator, 
-                                                                args=args, 
-                                                                number_actions=number_actions
-                                                                )
 
-                if best_loss is None or levin_loss < best_loss:
-                    best_loss = levin_loss
-                    best_option = agent
-                    best_option.to_option(mask, num_step, problem)
-                    logger.info(f'Best Loss so far: {mask}, {best_loss}, {problem}, {num_step} steps')
+            args_list = [
+                (
+                    selected_masks,
+                    selected_options + [agent],
+                    selected_options_lengths + [num_step],
+                    problem,
+                    trajectories,
+                    loss_evaluator,
+                    args,
+                    number_actions
+                )
+                for num_step in range(2, max_length + 1)
+            ]
+
+
+            with concurrent.futures.ProcessPoolExecutor() as executor:
+                # Submit tasks
+                futures = {executor.submit(evaluate_all_masks_parallel, arg): arg for arg in args_list}
+
+                # Collect results as they complete
+                for future in concurrent.futures.as_completed(futures):
+                    mask, levin_loss = future.result()
+                    num_step = futures[future][2][-1]  # Extract num_step from arguments
+
+                    if best_loss is None or levin_loss < best_loss:
+                        best_loss = levin_loss
+                        best_option = agent
+                        best_option.to_option(mask, num_step, problem)
+                        logger.info(f'Best Loss so far: {mask}, {best_loss}, {problem}, {num_step} steps')
+
+            # for num_step in range(2, max_length + 1):
+            #     mask, levin_loss = evaluate_all_masks_for_model(masks=selected_masks, 
+            #                                                     agents=selected_options + [agent], 
+            #                                                     num_steps=selected_options_lengths + [num_step],
+            #                                                     problem=problem, 
+            #                                                     trajectories=trajectories,
+            #                                                     loss_evaluator=loss_evaluator, 
+            #                                                     args=args, 
+            #                                                     number_actions=number_actions
+            #                                                     )
+
+            #     if best_loss is None or levin_loss < best_loss:
+            #         best_loss = levin_loss
+            #         best_option = agent
+            #         best_option.to_option(mask, num_step, problem)
+            #         logger.info(f'Best Loss so far: {mask}, {best_loss}, {problem}, {num_step} steps')
 
         selected_masks.append(best_option.mask)
         selected_options.append(best_option)
@@ -1114,15 +1151,16 @@ def main():
     logger.info(buffer)
     utils.logger_flush(logger)
 
-    # evaluate_all_masks_levin_loss(args, logger)
+    evaluate_all_masks_levin_loss(args, logger)
     # hill_climbing_mask_space_training_data()
     # whole_dec_options_training_data_levin_loss()
     # hill_climbing_all_segments()
-    learn_options(args, logger)
+    # learn_options(args, logger)
 
     logger.info(f"Run id: {run_name}")
     logger.info(f"logs saved at {args.log_path}")
 
 
+    
 if __name__ == "__main__":
     main()

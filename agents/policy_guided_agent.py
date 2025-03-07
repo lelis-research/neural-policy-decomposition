@@ -215,11 +215,14 @@ class PPOAgent(nn.Module):
     def get_value(self, x):
         return self.critic(x)
 
-    def get_action_and_value(self, x, action=None):
+    def get_action_and_value(self, x, action=None, deterministic=False):
         logits = self.actor(x)
         probs = Categorical(logits=logits)
         if action is None:
-            action = probs.sample()
+            if not deterministic:
+                action = probs.sample()
+            else:
+                action = probs.probs.max(dim=0)[1]
         return action, probs.log_prob(action), probs.entropy(), self.critic(x), logits
     
     def to_option(self, mask, option_size, problem):
@@ -269,7 +272,7 @@ class PPOAgent(nn.Module):
         
         return probs, output_logits
 
-    def run(self, env: Union[ComboGym, MiniGridWrap], length_cap=None, detach_tensors=True, verbose=False):
+    def run(self, env: Union[ComboGym, MiniGridWrap], length_cap=None, detach_tensors=True, verbose=False, deterministic=True):
 
         trajectory = Trajectory()
         current_length = 0
@@ -282,7 +285,7 @@ class PPOAgent(nn.Module):
         if verbose: print('Beginning Trajectory')
         while not done:
             o = torch.tensor(o, dtype=torch.float32)
-            a, _, _, _, logits = self.get_action_and_value(o)
+            a, _, _, _, logits = self.get_action_and_value(o, deterministic=deterministic)
             trajectory.add_pair(copy.deepcopy(env), a.item(), logits, detach=detach_tensors)
 
             if verbose:
