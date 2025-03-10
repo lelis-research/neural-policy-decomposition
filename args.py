@@ -24,7 +24,7 @@ class Args:
     # env_id: str = "BreakoutNoFrameskip-v4"
     env_id: str = "ComboGrid-v0"
     """the id of the environment"""
-    total_timesteps: int = 5000000
+    total_timesteps: int = 500000
     """total timesteps of the experiments"""
     learning_rate: float = 5e-4
     """the learning rate of the optimizer"""
@@ -32,7 +32,7 @@ class Args:
     """the learning rate of the optimizer for value network"""
     num_envs: int = 16
     """the number of parallel game environments"""
-    num_steps: int = 80
+    num_steps: int = 1000
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: int = 1
     """Toggle learning rate annealing for policy and value networks"""
@@ -66,13 +66,13 @@ class Args:
     "l1 lambda regularization"
     hidden_size: int = 64
     "size of RNN hidden states"
-    env_name: str = "combogrid"
+    env_name: str = "simple-crossing"
     "Name of the env. Registered ones: simple-crossing, combogrid"
-    problem_index: int = 0
+    problem_index: int = 1
     "Index corresponding to different problems. Refer to constants.py"
     fine_tune: bool = False
     "toggles fine tuning mode"
-    episode_length: int = 35
+    episode_length: int = 500
     "maximum episode length"
     game_width: int = 5
     "the width of the grid"

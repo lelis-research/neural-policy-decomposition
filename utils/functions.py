@@ -46,10 +46,10 @@ def get_model_path(env_name, model_index, base_dir=MODEL_DIR):
     return os.path.join(base_dir, f"{env_name}_model_{model_index}.pt")
 
 def get_trajectory_path(env_name, model_index, base_dir=TRAJ_DIR):
-    return os.path.join(base_dir, f"{env_name}_traj_{model_index}.pt")
+    return os.path.join(base_dir, f"{env_name}_traj_{model_index}.pkl")
 
-def get_option_path(env_name, model_index, base_dir=OPTION_DIR):
-    return os.path.join(base_dir, f"{env_name}_option_{model_index}.pt")
+def get_option_path(env_name, base_dir=OPTION_DIR):
+    return os.path.join(base_dir, f"{env_name}_option.pkl")
 
 
 def make_combogrid_env(problem, episode_length=None, width=3, visitation_bonus=1, options=[]):
@@ -85,8 +85,12 @@ def generate_trajectories_combogrid(args, model_idx):
     env = gym.vector.SyncVectorEnv(
     [make_combogrid_env(IDX_TO_COMBO[model_idx], width=args.game_width) for i in range(1)],
     )
-    rnn = GruAgent(env,args.hidden_size, feature_extractor=True, option_len=0, greedy=True, critic_layer_size=args.critic_layer_size, actor_layer_size=args.actor_layer_size)
-    rnn.load_state_dict(torch.load(get_model_path("combogrid", model_idx)))
+    try:
+        rnn = GruAgent(env,args.hidden_size, feature_extractor=True, greedy=True, critic_layer_size=args.critic_layer_size, actor_layer_size=args.actor_layer_size)
+        rnn.load_state_dict(torch.load(get_model_path("combogrid", model_idx), weights_only=True))
+    except:
+        rnn = GruAgent(env,args.hidden_size, feature_extractor=True, greedy=True, critic_layer_size=args.critic_layer_size, actor_layer_size=32)
+    rnn.load_state_dict(torch.load(get_model_path("combogrid", model_idx), weights_only=True))
     rnn.eval()
     trajectories = []
     counter = 0
@@ -96,21 +100,21 @@ def generate_trajectories_combogrid(args, model_idx):
     for i in range(args.game_width):
         for j in range(args.game_width):
             traj = Trajectory()
-            env = ComboGridEnv(args.game_width, args.game_width, IDX_TO_COMBO[model_idx], multiple_initial_states=False, visitation_bonus=args.visitation_bonus)
-            env._matrix_unit = np.zeros((args.game_width, args.game_width))
-            env._matrix_unit[i][j] = 1
-            env._x, env._y = (i, j)
+            env = ComboGridGym(args.game_width, args.game_width, IDX_TO_COMBO[model_idx], random_initial=False, visitation_bonus=0)
+            env._game._matrix_unit = np.zeros((args.game_width, args.game_width))
+            env._game._matrix_unit[i][j] = 1
+            env._game._x, env._game._y = (i, j)
             next_rnn_state = rnn.init_hidden()
             counter = 0
-            next_obs = env.get_observation()
-            while not env.is_over() and counter < args.episode_length:
+            next_obs = env._game.get_observation()
+            while not env._game.is_over() and counter < args.episode_length:
                 next_obs = torch.Tensor(next_obs).to(device)
                 action, logprob, _, value, next_rnn_state = rnn.get_action_and_value(next_obs, next_rnn_state, next_done)
                 traj.add_pair(copy.deepcopy(env), int(action[0]))
-                env.apply_action(action.cpu().numpy()[0])
-                next_obs = env.get_observation()
+                env._game.apply_action(action.cpu().numpy()[0])
+                next_obs = env._game.get_observation()
                 counter += 1
-            if len(traj.get_trajectory()) > 0 and env.is_over():
+            if len(traj.get_trajectory()) > 0 and env._game.is_over():
                 trajectories.append(traj)
     try:
         os.makedirs(TRAJ_DIR)
@@ -122,26 +126,26 @@ def generate_trajectories_combogrid(args, model_idx):
 
 
 
-def generate_trajectories_minigrid(args, env, model_idx):
-    if env == 'simple-crossing':
+def generate_trajectories_minigrid(args, env_name, model_idx):
+    if env_name == 'simple-crossing':
         env = gym.vector.SyncVectorEnv(
-        [make_env_simple_crossing(view_size=3, seed=args.seed, max_episode_steps=args.episode_length) for i in range(1)],
+        [make_env_simple_crossing(view_size=9, seed=model_idx, max_episode_steps=args.episode_length, visitation_bonus=0) for i in range(1)],
         )
     rnn = GruAgent(env, args.hidden_size, feature_extractor=True, greedy=True, critic_layer_size=args.critic_layer_size, actor_layer_size=args.actor_layer_size)
-    rnn.load_state_dict(torch.load(get_model_path(env, model_idx), weights_only=True))
+    rnn.load_state_dict(torch.load(get_model_path(env_name, model_idx), weights_only=True))
     rnn.eval()
     trajectories = []
     next_done = torch.zeros(1).to(device)
     traj = Trajectory()
     env = MiniGridWrap(
         CrossingEnv(obstacle_type=Wall, max_steps=args.episode_length),
-        seed=args.seed,
+        seed=model_idx,
         n_discrete_actions=3,
-        view_size=3,
+        view_size=9,
         step_reward=-1, 
         options=None)
     next_rnn_state = rnn.init_hidden()
-    next_obs, _ = env.reset(seed=args.seed)
+    next_obs, _ = env.reset(seed=model_idx)
     done = False
     counter = 0
     while not done:
@@ -158,7 +162,7 @@ def generate_trajectories_minigrid(args, env, model_idx):
     except:
         pass
 
-    with open (get_trajectory_path(env, model_idx), 'wb') as f:
+    with open (get_trajectory_path(env_name, model_idx), 'wb') as f:
         pickle.dump(trajectories, f)
 
 

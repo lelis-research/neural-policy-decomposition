@@ -33,10 +33,11 @@ class Mode:
         return Mode(self._h, self._transitions)
 
 class Automaton:
-    def __init__(self, model, problem):
+    def __init__(self, model, env_name, model_idx):
         self._modes = {}
         self._adjacency_dict = {}
-        self._problem = problem
+        self._env_name = env_name
+        self._model_idx = model_idx
         self._model = model
         self._initial_mode = Mode(tuple(self._model.init_hidden().clone().detach().numpy().flatten()), set())
         self._modes[tuple(self._model.init_hidden().clone().detach().numpy().flatten())] = self._initial_mode
@@ -46,11 +47,14 @@ class Automaton:
         return len(self._modes)
 
     def generate_modes(self, env_init=None, game_size=5):
+        #TODO
         if env_init is None:
-            env = ComboGridGym(game_size,game_size,self._problem, visitation_bonus=False)
-            next_obs, _ = env.reset()
+            # env = ComboGridGym(game_size,game_size,self._problem, visitation_bonus=False)
+            # next_obs, _ = env.reset()
+            pass
         else:
             env = copy.deepcopy(env_init)
+            next_obs = env.observation()
         h = self._model.init_hidden()
         self._modes.setdefault(tuple(h.clone().detach().numpy().flatten()), Mode(tuple(self._model.init_hidden().clone().detach().numpy().flatten()), set()))
         self._adjacency_dict.setdefault(tuple(h.clone().detach().numpy().flatten()),set())
@@ -68,7 +72,7 @@ class Automaton:
             self._adjacency_dict[h_val].add(tuple(h.clone().detach().numpy().flatten()))
             mode._transitions.add(tuple(h.clone().detach().numpy().flatten()))
             next_obs, _, terminations, truncations, _ = env.step(action.cpu().numpy())
-            if True in np.logical_or(terminations, truncations):
+            if terminations or truncations:
                 is_over = True
         #last hidden state
         h_val = tuple(h.clone().detach().numpy().flatten())
@@ -114,6 +118,7 @@ class Automaton:
         ep_len = 0
         episode_over = False
         env = copy.deepcopy(env_init)
+        next_obs = env.observation()
         while not terminate and ep_len < max_ep_len and not episode_over:
             x_tensor = torch.tensor(next_obs, dtype=torch.float32).to(device)
             action, logprob, _, value, h = self._model.get_action_and_value(x_tensor, h, next_done)
@@ -132,7 +137,7 @@ class Automaton:
                 terminate = True
             if not terminate:
                 next_obs, _, terminations, truncations, _ = env.step(action.cpu().numpy())
-                if True in np.logical_or(terminations, truncations):
+                if terminations or truncations:
                     episode_over = True
                 actions.append(action)
             ep_len += 1
@@ -249,25 +254,26 @@ class SubAutomataExtractor:
     def extract_sub_automata(self, print_images=False):
         mapping_names = None
         if print_images:
-            mapping_names = self._automaton.get_mapping_names()
-            self._automaton.print_image_with_mapping_names('images/full', mapping_names)
+            # mapping_names = self._automaton.get_mapping_names()
+            # self._automaton.print_image_with_mapping_names('images/full', mapping_names)
+            pass
 
         root = SearchNode()
         root.add_initial_mode(self._automaton._initial_mode)
-          # print('Initial Mode: ', self._automaton._initial_mode._state, self._automaton._initial_mode._action, self._automaton._initial_mode._h)
+        # print('Initial Mode: ', self._automaton._initial_mode._state, self._automaton._initial_mode._action, self._automaton._initial_mode._h)
 
         closed = self.bfs(root)
         automata = []
 
         counter = 1
         for node in closed:
-            automaton_from_node = Automaton(self._automaton._model, self._automaton._problem)
+            automaton_from_node = Automaton(self._automaton._model, self._automaton._env_name, self._automaton._model_idx)
             # automaton_from_node._adjacency_list = node._adjacency_list
             automaton_from_node.add_adj_dict(node._adjacency_list)
             automata.append(automaton_from_node)
 
             if print_images:
-                automaton_from_node.print_image_with_mapping_names('images/sub_' + str(counter), mapping_names)
+                automaton_from_node.print_image('images/sub_' + str(counter))
                 counter += 1
         return automata
 

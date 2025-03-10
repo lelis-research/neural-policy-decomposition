@@ -19,7 +19,7 @@ class ComboGridGym(gym.Env):
             self.ep_len = episode_length
         self.reset()
 
-    def _get_obs(self):
+    def observation(self):
         return self._game.get_observation()
     
     def reset(self,seed=0, **kwargs):
@@ -28,7 +28,7 @@ class ComboGridGym(gym.Env):
         self.goals_reached = 0
         self.truncated = False
         self.terminated = False
-        return self._get_obs(), {}
+        return self.observation(), {}
     
     def _calculate_reward(self, action):
         reward = 0
@@ -89,5 +89,5 @@ class ComboGridGym(gym.Env):
             self.truncated = True
 
         
-        return self._get_obs(), reward, self.terminated, self.truncated, {"l":self.n_steps, "r":reward, "g":self.goals_reached}
+        return self.observation(), reward, self.terminated, self.truncated, {"l":self.n_steps, "r":reward, "g":self.goals_reached}
     

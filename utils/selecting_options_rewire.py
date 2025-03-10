@@ -10,6 +10,8 @@ import random
 from utils.extract_automaton_quantized import Automaton
 from utils.extract_automaton_quantized import SubAutomataExtractor
 from models.model_recurrent import GruAgent
+from utils.functions import make_env_simple_crossing, make_combogrid_env, get_model_path, get_trajectory_path
+from constants import *
 
 from utils.extract_automaton import ExtractAutomaton
 import gymnasium as gym
@@ -143,67 +145,72 @@ def _rollout(agent, env):
     _h = None
     return traj
 
-def extract_options(seed=1, game_width=5, problem=[]):
+def extract_options(env_name, model_indicies, args, base_dir=MODEL_DIR):
     """
     This is the function to perform the selection of sub-automata from the automaton extract from recurrent models.
 
     This code assumes that the models were already trained for each one of the problems specified in the list problems below.
     """
-    problems = ["BL-TR", "TR-BL","TL-BR","BR-TL"]
-    # problems = ["BR-TL"]
+
     width_automaton = 1
     sub_automata = {}
     complete_automata = []
     base_automata = {}
-    for i in range(len(problems)):
-        sub_automata[problems[i]] = []
-        base_automata[problems[i]] = []
-        print('Extracting from models.model ', problems[i])
+    for i in range(len(model_indicies)):
+        sub_automata[model_indicies[i]] = []
+        base_automata[model_indicies[i]] = []
+        print('Extracting from models. model ', model_indicies[i])
 
-        # env = ComboGridEnv(5, 5, problems[i])
-        env = gym.vector.SyncVectorEnv(
-        [make_env(problems[i], width=game_width)],
-    )
-        rnn = GruAgent(env,64, option_len=0, greedy=True)
-        rnn.load_state_dict(torch.load(f'training_data/models/{seed}/{problems[i]}.pt'))
-        rnn.eval()
-        with open (f'training_data/trajectories/{seed}/{problems[i]}.pkl', 'rb') as f:
+        # env = ComboGridEnv(5, 5, model_indicies[i])
+        if env_name == "simple-crossing":
+            env = gym.vector.SyncVectorEnv(
+                [make_env_simple_crossing(view_size=9, seed=model_indicies[i], max_episode_steps=args.episode_length, visitation_bonus=args.visitation_bonus) for i in range(1)],
+                )
+        elif env_name == "combogrid":
+            env = gym.vector.SyncVectorEnv(
+                [make_combogrid_env(IDX_TO_COMBO[model_indicies[i]], args.episode_length, args.game_width, args.visitation_bonus) for i in range(1)],
+            )
+        try:
+            rnn = GruAgent(env, args.hidden_size, feature_extractor=True, quantized=args.quantized, critic_layer_size=args.critic_layer_size, actor_layer_size=args.actor_layer_size).to(device)
+            rnn.load_state_dict(torch.load(get_model_path(env_name=env_name, model_index=model_indicies[i], base_dir=base_dir), weights_only=True))
+            rnn.eval()
+        except:
+            rnn = GruAgent(env, args.hidden_size, feature_extractor=True, quantized=args.quantized, critic_layer_size=args.critic_layer_size, actor_layer_size=32).to(device)
+            rnn.load_state_dict(torch.load(get_model_path(env_name=env_name, model_index=model_indicies[i], base_dir=base_dir), weights_only=True))
+            rnn.eval() 
+        with open (get_trajectory_path(env_name=env_name, model_index=model_indicies[i]), 'rb') as f:
             trajectory = pickle.load(f)
-        full_automaton = Automaton(rnn, problems[i])
+        full_automaton = Automaton(rnn, env_name, model_indicies[i])
         for traj in trajectory: 
             full_automaton.generate_modes(traj.get_trajectory()[0][0])
-        base_automata[problems[i]] = base_automata[problems[i]] + [copy.deepcopy(full_automaton)]
+        base_automata[model_indicies[i]] = base_automata[model_indicies[i]] + [copy.deepcopy(full_automaton)]
 
         # extractor = SubAutomataExtractor(full_automaton, width_automaton)
-        complete_automata = complete_automata + base_automata[problems[i]]
+        complete_automata = complete_automata + base_automata[model_indicies[i]]
         counter = 1
-        for automaton in base_automata[problems[i]]:
+        for automaton in base_automata[model_indicies[i]]:
             # this will generate an image with the complete automaton extracted from each neural model
             # the images can be quite helpful for debugging purposes.
-            # automaton.print_image('images/base-' + problems[i] + '-' + str(counter))
+            automaton.print_image('images/base-' + str(model_indicies[i]) + '-' + str(counter))
             counter += 1
 
             sub_extractor = SubAutomataExtractor(automaton, width_automaton)
             automata = sub_extractor.extract_sub_automata()
-            sub_automata_rewired = sub_extractor.rewire_sub_automata(automata)
-            sub_automata[problems[i]] = sub_automata[problems[i]] + copy.deepcopy(sub_automata_rewired)
+            # sub_automata_rewired = sub_extractor.rewire_sub_automata(automata)
+            sub_automata[model_indicies[i]] = sub_automata[model_indicies[i]] + copy.deepcopy(automata)
+            # sub_automata[model_indicies[i]] = sub_automata[model_indicies[i]] + copy.deepcopy(sub_automata_rewired)
     
-        print('Extracted: ', len(sub_automata[problems[i]]), ' automata')
+        print('Extracted: ', len(sub_automata[model_indicies[i]]), ' automata')
 
 
     # loading the trajectories from the trained policies
     trajectories = {}
-    for problem in problems:
+    for model_idx in model_indicies:
         number_actions = 3
-        
-        #Generating trajectories
-        # trajectory = _rollout(rnn, env)
-
-        #Load trajectories
-        with open (f'training_data/trajectories/{seed}/{problem}.pkl', 'rb') as f:
+        with open (get_trajectory_path(env_name=env_name, model_index=model_indicies[i]), 'rb') as f:
             trajectory = pickle.load(f)
 
-        trajectories[problem] = trajectory
+        trajectories[model_idx] = trajectory
 
     loss = LevinLossAutomaton()
     selected_automata = []
@@ -283,8 +290,8 @@ def extract_options(seed=1, game_width=5, problem=[]):
     # remove the last automaton added
     selected_automata = selected_automata[0:len(selected_automata) - 1]
     try:
-        os.mkdir(f"training_data/options{seed}")
+        os.mkdir(f"training_data/options/{14}")
     except:
         pass
-    with open(f"training_data/options{seed}/selected_options.pkl", "wb") as file:
+    with open(f"training_data/options/simple-crossing_option.pkl", "wb") as file:
         pickle.dump(automata, file)

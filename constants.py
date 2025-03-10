@@ -10,6 +10,6 @@ COMBO_TO_IDX = {
 IDX_TO_COMBO = dict(zip(COMBO_TO_IDX.values(), COMBO_TO_IDX.keys()))
 
 #Default paths
-TRAJ_DIR = 'training_data/trajectories'
+TRAJ_DIR = 'training_data/trajectories/'
 MODEL_DIR = 'training_data/models/'
 OPTION_DIR = 'training_data/options/'

@@ -75,7 +75,7 @@ def train_model(env_name=None, model_idx=None, option_dir=None):
     # env setup
     if env_name == "simple-crossing":
         envs = gym.vector.SyncVectorEnv(
-            [make_env_simple_crossing(view_size=7, seed=model_idx, max_episode_steps=args.episode_length, visitation_bonus=args.visitation_bonus) for i in range(args.num_envs)],
+            [make_env_simple_crossing(view_size=9, seed=model_idx, max_episode_steps=args.episode_length, visitation_bonus=args.visitation_bonus) for i in range(args.num_envs)],
             )
     elif env_name == "combogrid":
         envs = gym.vector.SyncVectorEnv(
@@ -111,7 +111,10 @@ def train_model(env_name=None, model_idx=None, option_dir=None):
     # TRY NOT TO MODIFY: start the game
     global_step = 0
     start_time = time.time()
-    next_obs, _ = envs.reset(seed=args.seed)
+    if env_name == "simple-crossing":
+        next_obs, _ = envs.reset(seed=model_idx)
+    else:
+        next_obs, _ = envs.reset(seed=args.seed)
     next_obs = torch.Tensor(next_obs).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
     if args.rnn_type == 'lstm':
@@ -166,7 +169,7 @@ def train_model(env_name=None, model_idx=None, option_dir=None):
             if "final_info" in infos:
                 for info in infos["final_info"]:
                     if info and "episode" in info:
-                        print(f"global_step={global_step}, episodic_return={info["episode"]["r"]}, {info["episode"]["l"]}")
+                        print(f'global_step={global_step}, episodic_return={info["episode"]["r"]}, {info["episode"]["l"]}')
                         # #writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                         # #writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
                         episodic_l_avg += info["episode"]["l"][0]
@@ -312,9 +315,9 @@ def train_model(env_name=None, model_idx=None, option_dir=None):
                     })
     envs.close()
     #writer.close()
-    if not os.path.exists(MODEL_DIR):
-        os.makedirs(MODEL_DIR)
-    torch.save(agent.state_dict(), get_model_path(env_name=env_name, model_index=model_idx))
+    if not os.path.exists(MODEL_DIR+f"{args.seed}/"):
+        os.makedirs(MODEL_DIR+f"{args.seed}/")
+    torch.save(agent.state_dict(), get_model_path(env_name=env_name, model_index=model_idx, base_dir=MODEL_DIR+f"{args.seed}/"))
 
 if __name__ == "__main__":
     # train_model(option_dir="training_data/optionsselected_options_width_5.pkl")
