@@ -7,8 +7,9 @@ import numpy as np
 import random
 from minigrid.core.world_object import Wall
 from envs.combogrid_gym import ComboGridGym
-from envs.minigrid_env import MiniGridWrap
+from envs.minigrid_env import MiniGridWrap, CustomReward
 from minigrid.envs.crossing import CrossingEnv
+from minigrid.envs.fourrooms import FourRoomsEnv
 from minigrid.wrappers import PositionBonus
 from models.model_recurrent import GruAgent
 from envs.combogrid import ComboGridEnv
@@ -63,15 +64,33 @@ def make_combogrid_env(problem, episode_length=None, width=3, visitation_bonus=1
 
     return thunk
 
-def make_env_simple_crossing(*args, **kwargs):
+def make_env_fourrooms(*args, **kwargs):
     def thunk():
         env = MiniGridWrap(
-                CrossingEnv(obstacle_type=Wall, max_steps=1000 if 'max_episode_steps' not in kwargs else kwargs['max_episode_steps']),
+                env = FourRoomsEnv(max_steps=1000 if 'max_episode_steps' not in kwargs else kwargs['max_episode_steps'], seed=kwargs['seed']),
                 seed=kwargs['seed'],
                 n_discrete_actions=3,
                 view_size=kwargs['view_size'],
-                step_reward=-1, 
                 options=None if 'options' not in kwargs else kwargs['options'])
+        env = CustomReward(env, step_reward=-1, goal_reward=1)
+        env.reset(seed=kwargs['seed'])
+        if kwargs['visitation_bonus'] == 1:
+            env = PositionBonus(env, scale=0.001)
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        return env
+
+    return thunk
+
+def make_env_simple_crossing(*args, **kwargs):
+    def thunk():
+        env = MiniGridWrap(
+                CrossingEnv(obstacle_type=Wall, max_steps=1000 if 'max_episode_steps' not in kwargs else kwargs['max_episode_steps'], seed=kwargs['seed']),
+                seed=kwargs['seed'],
+                n_discrete_actions=3,
+                view_size=kwargs['view_size'],
+                options=None if 'options' not in kwargs else kwargs['options'])
+        env = CustomReward(env, step_reward=-1, goal_reward=1)
+        env.reset(seed=kwargs['seed'])
         if kwargs['visitation_bonus'] == 1:
             env = PositionBonus(env, scale=0.001)
         env = gym.wrappers.RecordEpisodeStatistics(env)
@@ -141,8 +160,7 @@ def generate_trajectories_minigrid(args, env_name, model_idx):
         CrossingEnv(obstacle_type=Wall, max_steps=args.episode_length),
         seed=model_idx,
         n_discrete_actions=3,
-        view_size=9,
-        step_reward=-1, 
+        view_size=9, 
         options=None)
     next_rnn_state = rnn.init_hidden()
     next_obs, _ = env.reset(seed=model_idx)
@@ -154,6 +172,7 @@ def generate_trajectories_minigrid(args, env_name, model_idx):
         traj.add_pair(copy.deepcopy(env), int(action[0]))
         next_obs, reward, terminated, truncated, infos = env.step(action.cpu().numpy())
         done = terminated or truncated
+    print(terminated)
     if len(traj.get_trajectory()) > 0 and terminated:
         trajectories.append(traj)
 

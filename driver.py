@@ -54,7 +54,7 @@ if __name__ =="__main__":
     # extract_options(args.seed, args.game_width)
 
     #TODO train test model with and without options
-    options = [None, f"training_data/options{args.seed}/selected_options.pkl"]
+    options = [0, 1]
     with multiprocessing.Pool(processes=ncpus) as pool:  # Adjust the number of processes here
         pool.starmap(train_model_positive, [("test", o, args.seed) for o in options])
         pool.starmap(train_model, [("test", o) for o in options])

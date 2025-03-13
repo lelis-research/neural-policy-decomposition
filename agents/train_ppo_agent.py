@@ -18,7 +18,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
 
-from utils.functions import make_env_simple_crossing, make_combogrid_env, get_model_path
+from utils.functions import *
 from constants import *
 from models.model_recurrent import LstmAgent, GruAgent
 print("Importing libs completed")
@@ -33,19 +33,18 @@ def _l1_norm(model, lambda_l1):
             l1_loss += torch.sum(torch.abs(param))
     return lambda_l1 * l1_loss
 
-def train_model(env_name=None, model_idx=None, option_dir=None):
+def train_model(env_name=None, model_idx=None, use_options=None):
     args = tyro.cli(Args)
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
     args.num_iterations = args.total_timesteps // args.batch_size
-    use_options = 0
-    if option_dir is not None:
-        use_options = 1
     if env_name is None:
         env_name = args.env_name
     if model_idx is None:
         model_idx = args.problem_index
-    run_name = f"{IDX_TO_COMBO[model_idx]}-lr{args.learning_rate}-num_step{args.num_steps}-clip_coef{args.clip_coef}-ent_coef{args.ent_coef}-epoch{args.update_epochs}-vloss{args.clip_vloss}-visit{args.visitation_bonus}-actor{args.actor_layer_size}-critic{args.critic_layer_size}"
+    if use_options is None:
+        use_options = args.use_options
+    run_name = f"{env_name}-{model_idx}-lr{args.learning_rate}-num_step{args.num_steps}-clip_coef{args.clip_coef}-ent_coef{args.ent_coef}-epoch{args.update_epochs}-vloss{args.clip_vloss}-visit{args.visitation_bonus}-actor{args.actor_layer_size}-critic{args.critic_layer_size}"
     print(run_name)
     if args.track:
         import wandb
@@ -66,6 +65,7 @@ def train_model(env_name=None, model_idx=None, option_dir=None):
     # )
     options = []
     if use_options == 1:
+        option_dir = get_option_path(env_name)
         with open(option_dir, "rb") as file:
             options = pickle.load(file)
         # options = [ 3, 4, 5, 6]
@@ -76,6 +76,10 @@ def train_model(env_name=None, model_idx=None, option_dir=None):
     if env_name == "simple-crossing":
         envs = gym.vector.SyncVectorEnv(
             [make_env_simple_crossing(view_size=9, seed=model_idx, max_episode_steps=args.episode_length, visitation_bonus=args.visitation_bonus) for i in range(args.num_envs)],
+            )
+    elif env_name == "fourrooms":
+        envs = gym.vector.SyncVectorEnv(
+            [make_env_fourrooms(view_size=9, seed=model_idx, max_episode_steps=args.episode_length, visitation_bonus=args.visitation_bonus, options=options if len(options)>0 else None) for i in range(args.num_envs)],
             )
     elif env_name == "combogrid":
         envs = gym.vector.SyncVectorEnv(
@@ -111,7 +115,7 @@ def train_model(env_name=None, model_idx=None, option_dir=None):
     # TRY NOT TO MODIFY: start the game
     global_step = 0
     start_time = time.time()
-    if env_name == "simple-crossing":
+    if env_name in ["simple-crossing", "fourrooms"]:
         next_obs, _ = envs.reset(seed=model_idx)
     else:
         next_obs, _ = envs.reset(seed=args.seed)
@@ -161,11 +165,10 @@ def train_model(env_name=None, model_idx=None, option_dir=None):
 
             # TRY NOT TO MODIFY: execute the game and log data.
             next_obs, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
-            # print(infos)
+
             next_done = np.logical_or(terminations, truncations)
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(next_done).to(device)
-
             if "final_info" in infos:
                 for info in infos["final_info"]:
                     if info and "episode" in info:
@@ -317,8 +320,8 @@ def train_model(env_name=None, model_idx=None, option_dir=None):
     #writer.close()
     if not os.path.exists(MODEL_DIR+f"{args.seed}/"):
         os.makedirs(MODEL_DIR+f"{args.seed}/")
-    torch.save(agent.state_dict(), get_model_path(env_name=env_name, model_index=model_idx, base_dir=MODEL_DIR+f"{args.seed}/"))
+    torch.save(agent.state_dict(), MODEL_DIR+f"{args.seed}/{run_name}")
 
 if __name__ == "__main__":
     # train_model(option_dir="training_data/optionsselected_options_width_5.pkl")
-    train_model(option_dir=None)
+    train_model()

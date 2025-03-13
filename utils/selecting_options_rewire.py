@@ -171,11 +171,11 @@ def extract_options(env_name, model_indicies, args, base_dir=MODEL_DIR):
                 [make_combogrid_env(IDX_TO_COMBO[model_indicies[i]], args.episode_length, args.game_width, args.visitation_bonus) for i in range(1)],
             )
         try:
-            rnn = GruAgent(env, args.hidden_size, feature_extractor=True, quantized=args.quantized, critic_layer_size=args.critic_layer_size, actor_layer_size=args.actor_layer_size).to(device)
+            rnn = GruAgent(env, args.hidden_size, feature_extractor=True, quantized=args.quantized, critic_layer_size=args.critic_layer_size, actor_layer_size=args.actor_layer_size, greedy=True).to(device)
             rnn.load_state_dict(torch.load(get_model_path(env_name=env_name, model_index=model_indicies[i], base_dir=base_dir), weights_only=True))
             rnn.eval()
         except:
-            rnn = GruAgent(env, args.hidden_size, feature_extractor=True, quantized=args.quantized, critic_layer_size=args.critic_layer_size, actor_layer_size=32).to(device)
+            rnn = GruAgent(env, args.hidden_size, feature_extractor=True, quantized=args.quantized, critic_layer_size=args.critic_layer_size, actor_layer_size=32, greedy=True).to(device)
             rnn.load_state_dict(torch.load(get_model_path(env_name=env_name, model_index=model_indicies[i], base_dir=base_dir), weights_only=True))
             rnn.eval() 
         with open (get_trajectory_path(env_name=env_name, model_index=model_indicies[i]), 'rb') as f:
@@ -280,8 +280,8 @@ def extract_options(env_name, model_indicies, args, base_dir=MODEL_DIR):
         #             best_automaton = automaton
         #             best_size = automaton.get_size()
 
-        # # we recompute the Levin loss after the automaton is selected so that we can use 
-        # # the loss on all trajectories as the stopping condition for selecting automata
+        # # # we recompute the Levin loss after the automaton is selected so that we can use 
+        # # # the loss on all trajectories as the stopping condition for selecting automata
         # selected_automata.append(best_automaton)
         # best_loss = loss.compute_loss(selected_automata, "", trajectories, number_actions)
 
@@ -294,4 +294,4 @@ def extract_options(env_name, model_indicies, args, base_dir=MODEL_DIR):
     except:
         pass
     with open(f"training_data/options/simple-crossing_option.pkl", "wb") as file:
-        pickle.dump(automata, file)
+        pickle.dump(selected_automata, file)

@@ -3,7 +3,36 @@ from minigrid.core.world_object import Wall
 from envs.crossing import CrossingEnv
 import numpy as np
 import gymnasium as gym
+from gymnasium.core import Wrapper
 import copy
+import time
+
+
+class CustomReward(Wrapper):
+    def __init__(self, env, step_reward=-1, goal_reward=1):
+        """A wrapper that converts the reward to a sparse reward. Agent receives goal_reward if reaches to the goal otherwise 
+        step_reward.
+
+        Args:
+            env: The environment to apply the wrapper
+            step_reward(Optional): the reward that the agent gets for each step. Default: -1
+            goal_reward(Optional): the reward that the agent receives if reaches to the goal. Default: 1
+        """
+        super().__init__(env)
+        self.counts = {}
+        self.step_reward = step_reward
+        self.goal_reward = goal_reward
+    
+    def step(self, action):
+        """Steps through the environment with `action`."""
+        obs, reward, terminated, truncated, info = self.env.step(action)
+
+        if terminated:
+            reward = self.goal_reward
+        else:
+            reward = self.step_reward
+
+        return obs, reward, terminated, truncated, info
 
 
 class MiniGridWrap(gym.Env):
@@ -13,7 +42,6 @@ class MiniGridWrap(gym.Env):
         seed=None,
         n_discrete_actions=3,
         view_size=5,
-        step_reward=0,
         show_direction=True,
         options=None,
     ):
@@ -21,7 +49,7 @@ class MiniGridWrap(gym.Env):
         # Define action and observation space
         self.seed_ = seed
         self.show_direction = show_direction
-        self.step_reward = step_reward
+        self.env = env
         self.env = ViewSizeWrapper(env, agent_view_size=view_size)
         # self.env.max_steps = max_episode_steps
         self.n_discrete_actions = n_discrete_actions
@@ -86,15 +114,15 @@ class MiniGridWrap(gym.Env):
     def step(self, action):
         reward = 0
         if self.options and action >= self.n_discrete_actions:
-            #TODO: Implement option execution
-            #reward += reward_step + self.step_reward
-            pass
+            is_applicable, actions = self.options[action - self.n_discrete_actions].transition(self, apply_actions=False)
+            if is_applicable:
+                for a in actions:
+                    _, temp_reward, terminated, truncated, _ = self.env.step(a)
+                    reward += temp_reward  
+                    if terminated or truncated:
+                        break          
         else:
             _, reward, terminated, truncated, _ = self.env.step(action)
-            if not terminated:
-                reward = self.step_reward
-            else:
-                reward = 1
         return self.observation(), reward, terminated, truncated, {}
 
     def reset(self, seed=None, options=None):
@@ -119,7 +147,6 @@ def get_training_tasks_simplecross():
                 gym.make("MiniGrid-SimpleCrossingS9N1-v0"),
                 seed=i,
                 max_episode_steps=1000,
-                step_reward=-1,
             )
         )
     return env_list

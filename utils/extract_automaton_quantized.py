@@ -8,6 +8,7 @@ from itertools import product
 import heapq
 import copy
 from graphviz import Digraph
+import pickle
 
 device = torch.device("cuda" if torch.cuda.is_available()  else "cpu")
 next_done = torch.zeros(1).to(device)

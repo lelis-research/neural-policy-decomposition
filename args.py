@@ -11,9 +11,9 @@ class Args:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
-    track: bool = False
+    track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
-    wandb_project_name: str = "PPOwithRandomInitial3x3"
+    wandb_project_name: str = "PPOFourrooms"
     """the wandb's project name"""
     wandb_entity: str = None
     """the entity (team) of wandb's project"""
@@ -24,15 +24,15 @@ class Args:
     # env_id: str = "BreakoutNoFrameskip-v4"
     env_id: str = "ComboGrid-v0"
     """the id of the environment"""
-    total_timesteps: int = 500000
+    total_timesteps: int = 5000000
     """total timesteps of the experiments"""
-    learning_rate: float = 5e-4
+    learning_rate: float = 8e-4
     """the learning rate of the optimizer"""
     value_learning_rate: float = 5e-4
     """the learning rate of the optimizer for value network"""
     num_envs: int = 16
     """the number of parallel game environments"""
-    num_steps: int = 1000
+    num_steps: int = 500
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: int = 1
     """Toggle learning rate annealing for policy and value networks"""
@@ -42,15 +42,15 @@ class Args:
     """the lambda for the general advantage estimation"""
     num_minibatches: int = 4
     """the number of mini-batches"""
-    update_epochs: int = 10
+    update_epochs: int = 6
     """the K epochs to update the policy"""
     norm_adv: bool = True
     """Toggles advantages normalization"""
-    clip_coef: float = 0.2
+    clip_coef: float = 0.02
     """the surrogate clipping coefficient"""
     clip_vloss: int = 0
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
-    ent_coef: float = 0.05
+    ent_coef: float = 0.2
     """coefficient of the entropy"""
     vf_coef: float = 0.5
     """coefficient of the value function"""
@@ -66,9 +66,9 @@ class Args:
     "l1 lambda regularization"
     hidden_size: int = 64
     "size of RNN hidden states"
-    env_name: str = "simple-crossing"
-    "Name of the env. Registered ones: simple-crossing, combogrid"
-    problem_index: int = 1
+    env_name: str = "fourrooms"
+    "Name of the env. Registered ones: simple-crossing, fourrooms, combogrid"
+    problem_index: int = 910
     "Index corresponding to different problems. Refer to constants.py"
     fine_tune: bool = False
     "toggles fine tuning mode"
@@ -76,13 +76,13 @@ class Args:
     "maximum episode length"
     game_width: int = 5
     "the width of the grid"
-    visitation_bonus: int = 1
+    visitation_bonus: int = 0
     "toggles using visitation bonus in calculating reward"
     actor_layer_size: int = 64
     "actor layer size"
     critic_layer_size: int = 64
     "critic layer size"
-    use_options: int = 0
+    use_options: int = 1
     "set to 0 for not using options, and 1 for using options when training"
     quantized: int = 1
     "set to 0 for models without quantized hidden states, and 1 models with quantized hidden states"
