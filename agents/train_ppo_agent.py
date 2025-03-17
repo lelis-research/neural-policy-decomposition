@@ -316,11 +316,17 @@ def train_model(env_name=None, model_idx=None, use_options=None):
                         "episodic_return":episodic_r_avg ,
                         "episodic_length": episodic_l_avg
                     })
+        
+        # if iteration % 100 == 0:
+        #     if not os.path.exists(MODEL_DIR+f"{args.seed}/"):
+        #         os.makedirs(MODEL_DIR+f"{args.seed}/")
+        #     torch.save(agent.state_dict(), MODEL_DIR+f"{run_name}-time{global_step}.pt")
+
     envs.close()
     #writer.close()
     if not os.path.exists(MODEL_DIR+f"{args.seed}/"):
         os.makedirs(MODEL_DIR+f"{args.seed}/")
-    torch.save(agent.state_dict(), MODEL_DIR+f"{args.seed}/{run_name}")
+    torch.save(agent.state_dict(), MODEL_DIR+f"{args.seed}/{run_name}-final.pt")
 
 if __name__ == "__main__":
     # train_model(option_dir="training_data/optionsselected_options_width_5.pkl")

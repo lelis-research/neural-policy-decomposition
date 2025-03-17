@@ -30,9 +30,9 @@ class Args:
     """the learning rate of the optimizer"""
     value_learning_rate: float = 5e-4
     """the learning rate of the optimizer for value network"""
-    num_envs: int = 16
+    num_envs: int = 8
     """the number of parallel game environments"""
-    num_steps: int = 500
+    num_steps: int = 600
     """the number of steps to run in each environment per policy rollout"""
     anneal_lr: int = 1
     """Toggle learning rate annealing for policy and value networks"""
@@ -42,7 +42,7 @@ class Args:
     """the lambda for the general advantage estimation"""
     num_minibatches: int = 4
     """the number of mini-batches"""
-    update_epochs: int = 6
+    update_epochs: int = 8
     """the K epochs to update the policy"""
     norm_adv: bool = True
     """Toggles advantages normalization"""
@@ -68,11 +68,11 @@ class Args:
     "size of RNN hidden states"
     env_name: str = "fourrooms"
     "Name of the env. Registered ones: simple-crossing, fourrooms, combogrid"
-    problem_index: int = 910
+    problem_index: int = 34
     "Index corresponding to different problems. Refer to constants.py"
     fine_tune: bool = False
     "toggles fine tuning mode"
-    episode_length: int = 500
+    episode_length: int = 300
     "maximum episode length"
     game_width: int = 5
     "the width of the grid"

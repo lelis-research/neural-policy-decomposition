@@ -7,7 +7,7 @@ import numpy as np
 import random
 from minigrid.core.world_object import Wall
 from envs.combogrid_gym import ComboGridGym
-from envs.minigrid_env import MiniGridWrap, CustomReward
+from envs.minigrid_env import MiniGridWrap
 from minigrid.envs.crossing import CrossingEnv
 from minigrid.envs.fourrooms import FourRoomsEnv
 from minigrid.wrappers import PositionBonus
@@ -72,7 +72,6 @@ def make_env_fourrooms(*args, **kwargs):
                 n_discrete_actions=3,
                 view_size=kwargs['view_size'],
                 options=None if 'options' not in kwargs else kwargs['options'])
-        env = CustomReward(env, step_reward=-1, goal_reward=1)
         env.reset(seed=kwargs['seed'])
         if kwargs['visitation_bonus'] == 1:
             env = PositionBonus(env, scale=0.001)
@@ -89,7 +88,6 @@ def make_env_simple_crossing(*args, **kwargs):
                 n_discrete_actions=3,
                 view_size=kwargs['view_size'],
                 options=None if 'options' not in kwargs else kwargs['options'])
-        env = CustomReward(env, step_reward=-1, goal_reward=1)
         env.reset(seed=kwargs['seed'])
         if kwargs['visitation_bonus'] == 1:
             env = PositionBonus(env, scale=0.001)

@@ -8,31 +8,11 @@ import copy
 import time
 
 
-class CustomReward(Wrapper):
-    def __init__(self, env, step_reward=-1, goal_reward=1):
-        """A wrapper that converts the reward to a sparse reward. Agent receives goal_reward if reaches to the goal otherwise 
-        step_reward.
-
-        Args:
-            env: The environment to apply the wrapper
-            step_reward(Optional): the reward that the agent gets for each step. Default: -1
-            goal_reward(Optional): the reward that the agent receives if reaches to the goal. Default: 1
-        """
-        super().__init__(env)
-        self.counts = {}
-        self.step_reward = step_reward
-        self.goal_reward = goal_reward
-    
-    def step(self, action):
-        """Steps through the environment with `action`."""
-        obs, reward, terminated, truncated, info = self.env.step(action)
-
-        if terminated:
-            reward = self.goal_reward
-        else:
-            reward = self.step_reward
-
-        return obs, reward, terminated, truncated, info
+def custom_reward(terminated, goal_reward=1, step_reward=-1):
+    if terminated:
+        return goal_reward
+    else:
+        return step_reward
 
 
 class MiniGridWrap(gym.Env):
@@ -53,6 +33,8 @@ class MiniGridWrap(gym.Env):
         self.env = ViewSizeWrapper(env, agent_view_size=view_size)
         # self.env.max_steps = max_episode_steps
         self.n_discrete_actions = n_discrete_actions
+        self.step_reward = -1
+        self.goal_reward = 1
         self.reset()
         self.action_space = gym.spaces.Discrete(n_discrete_actions)
         if options:
@@ -77,6 +59,7 @@ class MiniGridWrap(gym.Env):
 
     def setup_options(self, options):
         self.action_space = gym.spaces.Discrete(self.action_space.n + len(options))
+        self.env.action_space = gym.spaces.Discrete(self.env.action_space.n + len(options))
         self.options = copy.deepcopy(options)
 
     def one_hot_encode(self, observation):
@@ -114,15 +97,16 @@ class MiniGridWrap(gym.Env):
     def step(self, action):
         reward = 0
         if self.options and action >= self.n_discrete_actions:
-            is_applicable, actions = self.options[action - self.n_discrete_actions].transition(self, apply_actions=False)
+            is_applicable, actions = self.options[int(action) - self.n_discrete_actions].transition(self, apply_actions=False)
             if is_applicable:
                 for a in actions:
                     _, temp_reward, terminated, truncated, _ = self.env.step(a)
-                    reward += temp_reward  
+                    reward += custom_reward(terminated, self.goal_reward, self.step_reward)
                     if terminated or truncated:
                         break          
         else:
             _, reward, terminated, truncated, _ = self.env.step(action)
+            reward = custom_reward(terminated, self.goal_reward, self.step_reward)
         return self.observation(), reward, terminated, truncated, {}
 
     def reset(self, seed=None, options=None):
