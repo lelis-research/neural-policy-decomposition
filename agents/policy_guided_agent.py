@@ -177,8 +177,8 @@ class PPOAgent(nn.Module):
         else:
             raise NotImplementedError
 
-        print(f"Sparse initialization: {sparse_init}")
         if sparse_init:
+            print(f"Sparse initialization: {sparse_init}")
             self.critic = nn.Sequential(
                 layer_sparse_init(nn.Linear(observation_space_size, 64)),
                 nn.Tanh(),
@@ -211,6 +211,7 @@ class PPOAgent(nn.Module):
         self.problem_id = None
         self.environment_args = None
         self.discrete_masks = discrete_masks
+        self.extra_info = {}
         
     def get_value(self, x):
         return self.critic(x)

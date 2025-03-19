@@ -1,15 +1,21 @@
-from pipelines.extract_subpolicy_ppo import regenerate_trajectories, process_args
+from pipelines.extract_subpolicy_ppo import regenerate_trajectories, process_args, get_single_environment, load_options
 from utils import utils
+from agents.policy_guided_agent import PPOAgent
+import random
+import numpy as np
+import torch
 
 args = process_args()
 
 args.model_paths = (
-        'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_envsd0',
-        'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd1',
-        'train_ppoAgent_sparseInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd2',
+        'train_ppoAgent_ComboGrid_gw5_h6_l10_lr0.00025_clip0.2_ent0.01_envsd0_TL-BR',
+        'train_ppoAgent_ComboGrid_gw5_h6_l10_lr0.00025_clip0.2_ent0.01_envsd1_TR-BL',
+        'train_ppoAgent_ComboGrid_gw5_h6_l10_lr0.00025_clip0.2_ent0.01_envsd2_BR-TL',
+        'train_ppoAgent_ComboGrid_gw5_h6_l10_lr0.00025_clip0.2_ent0.01_envsd3_BL-TR'
         )
 
 lengths = {}
+logger, _ = utils.get_logger('hill_climbing_logger', args.log_level, args.log_path)
 
 for i in range(10):
     trajectories = regenerate_trajectories(args, verbose=False, logger=None)
