@@ -26,7 +26,7 @@ from utils.utils import timing_decorator
 
 @dataclass
 class Args:
-    exp_name: str = "extract_decOption_randomInit"
+    exp_name: str = "extract_learnOption"
     # exp_name: str = "extract_decOptionWhole_sparseInit"
     # exp_name: str = "extract_learnOptions_randomInit_discreteMasks"
     # exp_name: str = "extract_learnOptions_randomInit_pitisFunction"
@@ -216,7 +216,8 @@ def save_options(options: List[PPOAgent], trajectories: dict, args: Args, logger
             'mask': model.mask,
             'n_iterations': model.option_size,
             'problem': model.problem_id,
-            'environment_args': vars(args)
+            'environment_args': vars(args),
+            'extra_info': model.extra_info
         }, model_path)
     
     logger.info(f"Options saved to {save_dir}")
@@ -246,6 +247,8 @@ def load_options(args, logger):
     n = len(model_files)
     options = [None] * n
 
+    print(model_files)
+
     for model_file in model_files:
         model_path = os.path.join(save_dir, model_file)
         checkpoint = torch.load(model_path)
@@ -270,8 +273,9 @@ def load_options(args, logger):
         model = PPOAgent(envs=envs, hidden_size=args.hidden_size)  # Create a new PPOAgent instance with default parameters
         model.load_state_dict(checkpoint['model_state_dict'])
         model.to_option(checkpoint['mask'], checkpoint['n_iterations'], checkpoint['problem'])
-        if 'environment_args' in checkpoint:
-            model.environment_args = checkpoint['environment_args']
+        model.extra_info = checkpoint['extra_info'] if 'extra_info' in checkpoint else {}
+        model.environment_args = checkpoint['environment_args'] if 'environment_args' in checkpoint else {}
+
         i = checkpoint['id']
         options[i] = model
         
@@ -854,11 +858,10 @@ def learn_mask(agent: PPOAgent, trajectories: dict, args: Args, discrete_masks=T
     return mask_transformed.detach().data, init_loss, mask_loss.item()
 
 
-def learn_mask_iter(trajectories, problem, s, length, agent, args, model_path, logger):
+def learn_mask_iter(trajectories, problem, s, length, agent, args, logger):
     sub_trajectory = {problem: trajectories[problem].slice(s, n=length)}
     # learn option with this length using gumbel softmax
-    mask, init_loss, final_loss = learn_mask(agent, sub_trajectory, args, logger=logger)
-    return (mask, problem, length, model_path, s), init_loss, final_loss
+    return learn_mask(agent, sub_trajectory, args, logger=logger)
 
 
 @timing_decorator
@@ -877,12 +880,17 @@ def learn_options(args: Args, logger: logging.Logger):
 
     # TODO: learn masks on trajectories of different problems, fine tunning also happens in the same manner
     for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
-        model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
-        logger.info(f'Extracting from the agent trained on {problem}, env_seed={seed}')
-        env = get_single_environment(args, seed=seed)
-        
-        agent = PPOAgent(env, hidden_size=args.hidden_size)
-        agent.load_state_dict(torch.load(model_path))
+        logger.info(f'Extracting options using trajectory segments from {problem}, env_seed={seed}')
+        other_agents = {}
+
+        for other_seed, other_problem, other_model_directory in zip(args.env_seeds, args.problems, args.model_paths):
+            if other_problem == problem:
+                continue
+            model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
+            other_env = get_single_environment(args, seed=other_seed)
+            other_agent = PPOAgent(other_env, hidden_size=args.hidden_size)
+            other_agent.load_state_dict(torch.load(model_path))
+            other_agents[other_problem] = (other_seed, model_path, other_agent)
 
         t_length = trajectories[problem].get_length()
 
@@ -891,22 +899,35 @@ def learn_options(args: Args, logger: logging.Logger):
             futures = []
             for length in range(2, t_length + 1):
                 for s in range(t_length - length):
-                    future = executor.submit(
-                        learn_mask_iter, trajectories, problem, s, length, agent, 
-                        args, model_path, logger
-                    )
-                    future.s = s,
-                    future.length = length
-                    futures.append(future)
+                        for other_problem, (other_seed, other_model_directory, other_agent) in other_agents.items():
+                            future = executor.submit(
+                                learn_mask_iter, trajectories, problem, s, length, other_agent, 
+                                args, logger
+                            )
+                            future.s = s,
+                            future.length = length
+                            future.primary_problem = other_problem
+                            future.primary_env_seed = other_seed
+                            future.primary_model_path = other_model_directory
+                            futures.append(future)
 
             # Process the results as they complete
             for future in concurrent.futures.as_completed(futures):
                 try:
-                    (mask, problem, length, model_path, s), init_loss, final_loss = future.result()
-                    all_masks_info.append((mask, problem, seed, length, model_path, s))
-                    logger.info(f'Progress: segment:{s} of length{length} done. init_loss={init_loss}, final_loss={final_loss}')
+                    target_env_seed = seed 
+                    target_problem = problem
+                    mask, init_loss, final_loss = future.result()
+                    all_masks_info.append((mask, 
+                                           future.primary_problem, 
+                                           target_problem, 
+                                           future.primary_env_seed, 
+                                           target_env_seed, 
+                                           future.length, 
+                                           future.primary_model_path, 
+                                           future.s))
+                    logger.info(f'Progress: segment:{future.s} of length {future.length}, primary_problem={future.primary_problem} done. init_loss={init_loss}, final_loss={final_loss}')
                 except Exception as exc:
-                    logger.error(f'Segment:{future.s} of length{future.length}generated an exception: {exc}')
+                    logger.error(f'Segment:{future.s} of length{future.length} with primary_problem={future.primary_problem} generated an exception: {exc}')
         utils.logger_flush(logger)
     logger.debug("\n")
 
@@ -925,15 +946,15 @@ def learn_options(args: Args, logger: logging.Logger):
         best_loss = None
         best_mask_model = None
 
-        for mask, problem, seed, option_size, model_path, segment in all_masks_info:
-            logger.info(f'Evaluating the option from problem={problem}, env_seed={seed}, segment=({segment},{segment+option_size})')
-            env = get_single_environment(args, seed=seed)
+        for mask, primary_problem, target_problem, primary_env_seed, target_env_seed, option_size, model_path, segment in all_masks_info:
+            logger.info(f'Evaluating the option trained on the segment {({segment[0]},{segment[0]+option_size})} from problem={target_problem}, env_seed={target_env_seed}, primary_problem={primary_problem}')
+            env = get_single_environment(args, seed=primary_env_seed)
             agent = PPOAgent(env, hidden_size=args.hidden_size)
             agent.load_state_dict(torch.load(model_path))
 
             loss_value = levin_loss.compute_loss(masks=selected_masks + [mask], 
                                            agents=selected_options + [agent], 
-                                           problem_str=problem, 
+                                           problem_str=primary_problem, 
                                            trajectories=trajectories, 
                                            number_actions=number_actions, 
                                            number_steps=selected_option_sizes + [option_size])
@@ -941,7 +962,11 @@ def learn_options(args: Args, logger: logging.Logger):
             if best_loss is None or loss_value < best_loss:
                 best_loss = loss_value
                 best_mask_model = agent
-                agent.to_option(mask, option_size, problem)   
+                agent.to_option(mask, option_size, primary_problem)
+                agent.extra_info['primary_env_seed'] = primary_env_seed
+                agent.extra_info['target_problem'] = target_problem
+                agent.extra_info['target_env_seed'] = target_env_seed
+                agent.extra_info['segment'] = segment
 
         # we recompute the Levin loss after the automaton is selected so that we can use 
         # the loss on all trajectories as the stopping condition for selecting masks
@@ -1151,11 +1176,11 @@ def main():
     logger.info(buffer)
     utils.logger_flush(logger)
 
-    evaluate_all_masks_levin_loss(args, logger)
+    # evaluate_all_masks_levin_loss(args, logger)
     # hill_climbing_mask_space_training_data()
     # whole_dec_options_training_data_levin_loss()
     # hill_climbing_all_segments()
-    # learn_options(args, logger)
+    learn_options(args, logger)
 
     logger.info(f"Run id: {run_name}")
     logger.info(f"logs saved at {args.log_path}")
