@@ -2,7 +2,7 @@ import os
 import tyro
 from utils import utils
 from losses import LogitsLossActorCritic
-from extract_subpolicy_ppo import load_options
+from pipelines.option_discovery import load_options
 from dataclasses import dataclass
 
 

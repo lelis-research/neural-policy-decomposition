@@ -13,7 +13,7 @@ from utils import utils
 from dataclasses import dataclass
 import itertools
 import logging
-from typing import Union, List
+from typing import Union, List, Tuple
 import concurrent.futures
 from pipelines.losses import LevinLossActorCritic, LogitsLossActorCritic
 from agents.policy_guided_agent import PPOAgent
@@ -31,7 +31,7 @@ class Args:
     # exp_name: str = "extract_learnOptions_randomInit_discreteMasks"
     # exp_name: str = "extract_learnOptions_randomInit_pitisFunction"
     """the name of this experiment"""
-    env_seeds: Union[List[int], str] = (0,1,2,3)
+    env_seeds: Union[List, str, Tuple] = (0,1,2,3)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
     # model_paths: List[str] = (
     #     'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_envsd0',
@@ -87,6 +87,8 @@ class Args:
     mask_learning_steps: int = 1_000
     """"""
     max_grad_norm: float = 1.0
+    """"""
+    input_update_frequency: int = 1
 
     # Script arguments
     seed: int = 0
@@ -786,6 +788,27 @@ def whole_dec_options_training_data_levin_loss(args: Args, logger: logging.Logge
     utils.logger_flush(logger)
 
 
+class STESoftmax(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x):
+        """
+        Forward pass: Selects the highest probability (argmax) and returns a one-hot encoding.
+        """
+        max_indices = torch.argmax(x, dim=0, keepdim=True)
+        
+        one_hot = torch.zeros_like(x)
+        one_hot.scatter_(0, max_indices, 1.0)
+        
+        return one_hot
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        """
+        Backward pass: Allows gradient to flow through as if softmax was used.
+        """
+        return grad_output
+
+
 class STEQuantize(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x):
@@ -800,206 +823,311 @@ class STEQuantize(torch.autograd.Function):
         return grad_output
 
 
-def learn_mask(agent: PPOAgent, trajectories: dict, args: Args, discrete_masks=True, logger=None):
-    # Initialize the masks as trainable parameters with random values
-    mask = torch.nn.Parameter(torch.randn(args.hidden_size), requires_grad=True)
-    optimizer = torch.optim.Adam([mask], lr=args.mask_learning_rate)
+class LearnOptions:
+    def __init__(self, args: Args, logger: logging.Logger, mask_type: str = "internal", mask_transform_type: str = "softmax"):
+        """
+        `mask_type` can be either "internal", "input", or "both"
+        `mask_transform_type` can be either "softmax" or "quantize"
+        """
+        
+        self.args = args
+        self.logger = logger
+        self.mask_transform_type = mask_transform_type
+        self._mask_transform_func = self._get_transform_func()
+        self.mask_type = mask_type
+        self.levin_loss = LevinLossActorCritic(self.logger, self.mask_type, self.mask_transform_type)
+        self.number_actions = 3
 
-    init_loss = None
+    def _get_transform_func(self):
+        if self.mask_transform_type == "softmax":
+            return LearnOptions._softmax_transform
+        elif self.mask_transform_type == "quantize":
+            return LearnOptions._tanh_transform
+        else:
+            raise ValueError(f"Invalid mask transform type: {self.mask_transform_type}")
 
-    steps = 0
-    # with tqdm(total=args.mask_learning_steps, desc="Mask Learning Steps") as pbar:
-    while steps < args.mask_learning_steps:
-        # Iterate over trajectories
-        for _, trajectory in trajectories.items():
-            if steps >= args.mask_learning_steps:
-                break
-
-            # Forward pass with mask
-            envs = trajectory.get_state_sequence()
-            agent.eval()
-
-            # Apply transformations with requires_grad
-
-            mask_transformed = 1.5 * torch.tanh(mask) + 0.5 * torch.tanh(-3 * mask)
-            if discrete_masks:
-                mask_transformed = STEQuantize.apply(mask_transformed)
-            else:
-                mask_transformed = mask_transformed.clamp(-0.5, 0.5) * 2
-
-            new_trajectory = agent.run_with_mask(envs, mask_transformed, trajectory.get_length())
-
-            # Compute the mask loss
-            # cross_entropy_loss = torch.nn.CrossEntropyLoss()
-            
-            input_probs = torch.nn.functional.log_softmax(torch.stack(new_trajectory.logits), dim=0)
-            target_probs = torch.nn.functional.softmax(torch.stack(trajectory.logits) , dim=0)
-            loss_fn = torch.nn.KLDivLoss(reduction='batchmean')
-            mask_loss = loss_fn(input_probs, target_probs)
-            if not init_loss:
-                init_loss = mask_loss.item()
-
-            # Backward pass and optimization
-            optimizer.zero_grad()
-            mask_loss.backward()
-            
-            torch.nn.utils.clip_grad_norm_([mask], max_norm=args.max_grad_norm)
-            optimizer.step()
-
-            # Update progress
-            steps += 1
-                # pbar.update(1)  # Update the outer progress bar
-
-    mask_transformed = 1.5 * torch.tanh(mask) + 0.5 * torch.tanh(-3 * mask)
-    if discrete_masks:
+    @staticmethod
+    def _tanh_transform(mask):
+        mask_transformed = 1.5 * torch.tanh(mask) + 0.5 * torch.tanh(-3 * mask)
         mask_transformed = STEQuantize.apply(mask_transformed)
-    else:
-        mask_transformed = mask_transformed.clamp(-0.5, 0.5) * 2
-    return mask_transformed.detach().data, init_loss, mask_loss.item()
+        return mask_transformed
 
+    @staticmethod
+    def _softmax_transform(mask):
+            return STESoftmax.apply(torch.softmax(mask, dim=0))
 
-def learn_mask_iter(trajectories, problem, s, length, agent, args, logger):
-    sub_trajectory = {problem: trajectories[problem].slice(s, n=length)}
-    # learn option with this length using gumbel softmax
-    return learn_mask(agent, sub_trajectory, args, logger=logger)
+    @timing_decorator
+    def discover(self):
+        """
+        This function performs hill climbing in the space of masks of a ReLU neural network
+        to minimize the Levin loss of a given data set. It uses gumbel_softmax to extract 
+        """
 
+        trajectories = regenerate_trajectories(self.args, verbose=True, logger=self.logger)
 
-@timing_decorator
-def learn_options(args: Args, logger: logging.Logger):
-    """
-    This function performs hill climbing in the space of masks of a ReLU neural network
-    to minimize the Levin loss of a given data set. It uses gumbel_softmax to extract 
-    """
-    number_actions = 3
+        option_candidates = []
 
-    trajectories = regenerate_trajectories(args, verbose=True, logger=logger)
+        for target_seed, target_problem in zip(self.args.env_seeds, self.args.problems):
+            self.logger.info(f'Extracting options using trajectory segments from {target_problem}, env_seed={target_seed}')
+            mimicing_agents = {}
 
-    levin_loss = LevinLossActorCritic(logger)
+            t_length = trajectories[target_problem].get_length()
 
-    all_masks_info = []
+            for primary_seed, primary_problem, primary_model_directory in zip(self.args.env_seeds, self.args.problems, self.args.model_paths):
+                if primary_problem == target_problem:
+                    continue
+                model_path = f'binary/models/{primary_model_directory}/seed={self.args.seed}/ppo_first_MODEL.pt'
+                primary_env = get_single_environment(self.args, seed=primary_seed)
+                parimary_agent = PPOAgent(primary_env, hidden_size=self.args.hidden_size)
+                parimary_agent.load_state_dict(torch.load(model_path))
+                mimicing_agents[primary_problem] = (primary_seed, model_path, parimary_agent)
 
-    # TODO: learn masks on trajectories of different problems, fine tunning also happens in the same manner
-    for seed, problem, model_directory in zip(args.env_seeds, args.problems, args.model_paths):
-        logger.info(f'Extracting options using trajectory segments from {problem}, env_seed={seed}')
-        other_agents = {}
+            with concurrent.futures.ProcessPoolExecutor(max_workers=self.args.cpus) as executor:
+                # Submit tasks to the executor with all required arguments
+                futures = []
+                for length in range(2, t_length + 1):
+                    for s in range(t_length - length):
+                            for primary_problem, (primary_seed, primary_model_path, parimary_agent) in mimicing_agents.items():
+                                future = executor.submit(
+                                    self._train_mask_iter, trajectories, target_problem, s, length, parimary_agent)
+                                future.s = s,
+                                future.length = length
+                                future.primary_problem = primary_problem
+                                future.primary_env_seed = primary_seed
+                                future.primary_model_path = primary_model_path
+                                futures.append(future)
 
-        for other_seed, other_problem, other_model_directory in zip(args.env_seeds, args.problems, args.model_paths):
-            if other_problem == problem:
-                continue
-            model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
-            other_env = get_single_environment(args, seed=other_seed)
-            other_agent = PPOAgent(other_env, hidden_size=args.hidden_size)
-            other_agent.load_state_dict(torch.load(model_path))
-            other_agents[other_problem] = (other_seed, model_path, other_agent)
+                # Process the results as they complete
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        mask, init_loss, final_loss = future.result()
+                        option_candidates.append((mask, 
+                                            future.primary_problem, 
+                                            target_problem, 
+                                            future.primary_env_seed, 
+                                            target_seed, 
+                                            future.length, 
+                                            future.primary_model_path, 
+                                            future.s))
+                        self.logger.info(f'Progress: segment:{future.s} of length {future.length}, primary_problem={future.primary_problem} done. init_loss={init_loss}, final_loss={final_loss}')
+                    except Exception as exc:
+                        self.logger.error(f'Segment:{future.s} of length {future.length} with primary_problem={future.primary_problem} generated an exception: {exc}')
+            utils.logger_flush(self.logger)
+        self.logger.debug("\n")
 
-        t_length = trajectories[problem].get_length()
+        selected_masks = []
+        selected_option_sizes = []
+        selected_options = []
+        selected_options_problem = []
 
-        with concurrent.futures.ProcessPoolExecutor(max_workers=args.cpus) as executor:
-            # Submit tasks to the executor with all required arguments
-            futures = []
-            for length in range(2, t_length + 1):
-                for s in range(t_length - length):
-                        for other_problem, (other_seed, other_model_directory, other_agent) in other_agents.items():
-                            future = executor.submit(
-                                learn_mask_iter, trajectories, problem, s, length, other_agent, 
-                                args, logger
-                            )
-                            future.s = s,
-                            future.length = length
-                            future.primary_problem = other_problem
-                            future.primary_env_seed = other_seed
-                            future.primary_model_path = other_model_directory
-                            futures.append(future)
-
-            # Process the results as they complete
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    target_env_seed = seed 
-                    target_problem = problem
-                    mask, init_loss, final_loss = future.result()
-                    all_masks_info.append((mask, 
-                                           future.primary_problem, 
-                                           target_problem, 
-                                           future.primary_env_seed, 
-                                           target_env_seed, 
-                                           future.length, 
-                                           future.primary_model_path, 
-                                           future.s))
-                    logger.info(f'Progress: segment:{future.s} of length {future.length}, primary_problem={future.primary_problem} done. init_loss={init_loss}, final_loss={final_loss}')
-                except Exception as exc:
-                    logger.error(f'Segment:{future.s} of length{future.length} with primary_problem={future.primary_problem} generated an exception: {exc}')
-        utils.logger_flush(logger)
-    logger.debug("\n")
-
-    selected_masks = []
-    selected_option_sizes = []
-    selected_options = []
-    selected_options_problem = []
-
-    previous_loss = None
-    best_loss = None
-
-    # the greedy loop of selecting options (masks)
-    while previous_loss is None or best_loss < previous_loss:
-        previous_loss = best_loss
-
+        previous_loss = None
         best_loss = None
-        best_mask_model = None
 
-        for mask, primary_problem, target_problem, primary_env_seed, target_env_seed, option_size, model_path, segment in all_masks_info:
-            logger.info(f'Evaluating the option trained on the segment {({segment[0]},{segment[0]+option_size})} from problem={target_problem}, env_seed={target_env_seed}, primary_problem={primary_problem}')
-            env = get_single_environment(args, seed=primary_env_seed)
-            agent = PPOAgent(env, hidden_size=args.hidden_size)
-            agent.load_state_dict(torch.load(model_path))
+        # the greedy loop of selecting options (masks)
+        while previous_loss is None or best_loss < previous_loss:
+            previous_loss = best_loss
 
-            loss_value = levin_loss.compute_loss(masks=selected_masks + [mask], 
-                                           agents=selected_options + [agent], 
-                                           problem_str=primary_problem, 
-                                           trajectories=trajectories, 
-                                           number_actions=number_actions, 
-                                           number_steps=selected_option_sizes + [option_size])
+            best_loss = None
+            best_mask_model = None
 
-            if best_loss is None or loss_value < best_loss:
-                best_loss = loss_value
-                best_mask_model = agent
-                agent.to_option(mask, option_size, primary_problem)
-                agent.extra_info['primary_env_seed'] = primary_env_seed
-                agent.extra_info['target_problem'] = target_problem
-                agent.extra_info['target_env_seed'] = target_env_seed
-                agent.extra_info['segment'] = segment
+            for mask, primary_problem, target_problem, primary_env_seed, target_env_seed, option_size, model_path, segment in option_candidates:
+                self.logger.info(f'Evaluating the option trained on the segment {({segment[0]},{segment[0]+option_size})} from problem={target_problem}, env_seed={target_env_seed}, primary_problem={primary_problem}')
+                env = get_single_environment(self.args, seed=primary_env_seed)
+                agent = PPOAgent(env, hidden_size=self.args.hidden_size)
+                agent.load_state_dict(torch.load(model_path))
 
-        # we recompute the Levin loss after the automaton is selected so that we can use 
-        # the loss on all trajectories as the stopping condition for selecting masks
-        selected_masks.append(best_mask_model.mask)
-        selected_option_sizes.append(best_mask_model.option_size)
-        selected_options.append(best_mask_model)
-        selected_options_problem.append(best_mask_model.problem_id)
-        best_loss = levin_loss.compute_loss(selected_masks, selected_options, "", trajectories, number_actions, selected_option_sizes)
+                loss_value = self.levin_loss.compute_loss(masks=selected_masks + [mask], 
+                                            agents=selected_options + [agent], 
+                                            problem_str=primary_problem, 
+                                            trajectories=trajectories, 
+                                            number_actions=self.number_actions, 
+                                            number_steps=selected_option_sizes + [option_size])
 
-        logger.info(f"Added option #{len(selected_options)}; Levin loss of the current selected set: {best_loss} on all trajectories")
-        utils.logger_flush(logger)
+                if best_loss is None or loss_value < best_loss:
+                    best_loss = loss_value
+                    best_mask_model = agent
+                    agent.to_option(mask, option_size, primary_problem)
+                    agent.extra_info['primary_env_seed'] = primary_env_seed
+                    agent.extra_info['target_problem'] = target_problem
+                    agent.extra_info['target_env_seed'] = target_env_seed
+                    agent.extra_info['segment'] = segment
 
-    # remove the last automaton added
-    num_options = len(selected_options)
-    selected_options = selected_options[:num_options - 1]
+            # we recompute the Levin loss after the automaton is selected so that we can use 
+            # the loss on all trajectories as the stopping condition for selecting masks
+            selected_masks.append(best_mask_model.mask)
+            selected_option_sizes.append(best_mask_model.option_size)
+            selected_options.append(best_mask_model)
+            selected_options_problem.append(best_mask_model.problem_id)
+            best_loss = self.levin_loss.compute_loss(selected_masks, selected_options, "", trajectories, number_actions, selected_option_sizes)
 
-    # printing selected options
-    logger.info("Selected options:")
-    for i in range(len(selected_options)):
-        logger.info(f"Option #{i}:\n" + 
-                    f"mask={selected_options[i].mask}\n" +
-                    f"size={selected_options[i].option_size}\n" +
-                    f"problem={selected_options[i].problem_id}")
+            self.logger.info(f"Added option #{len(selected_options)}; Levin loss of the current selected set: {best_loss} on all trajectories")
+            utils.logger_flush(self.logger)
 
-    save_options(options=selected_options, 
-                 trajectories=trajectories,
-                 args=args, 
-                 logger=logger)
+        # remove the last automaton added
+        num_options = len(selected_options)
+        selected_options = selected_options[:num_options - 1]
 
-    utils.logger_flush(logger)
+        # printing selected options
+        self.logger.info("Selected options:")
+        for i in range(len(selected_options)):
+            self.logger.info(f"Option #{i}:\n" + 
+                        f"mask={selected_options[i].mask}\n" +
+                        f"size={selected_options[i].option_size}\n" +
+                        f"problem={selected_options[i].problem_id}")
 
-    levin_loss.print_output_subpolicy_trajectory(selected_options, trajectories, logger=logger)
-    utils.logger_flush(logger)
+        save_options(options=selected_options, 
+                    trajectories=trajectories,
+                    args=self.args, 
+                    logger=self.logger)
+
+        utils.logger_flush(self.logger)
+
+        self.levin_loss.print_output_subpolicy_trajectory(selected_options, trajectories, logger=self.logger)
+        utils.logger_flush(self.logger)
+
+    def _train_mask_iter(self, trajectories, problem, s, length, agent: PPOAgent):
+        sub_trajectory = {problem: trajectories[problem].slice(s, n=length)}
+        # learn option with this length
+        if self.mask_type != "both":
+            if self.mask_type == "internal" and self.mask_transform_type == "quantize":
+                mask = torch.nn.Parameter(torch.randn(self.args.hidden_size), requires_grad=True)
+                rollout_func = agent.run_with_mask
+            elif self.mask_type == "internal" and self.mask_transform_type == "softmax":
+                mask = torch.nn.Parameter(torch.randn(3, self.args.hidden_size), requires_grad=True)
+                rollout_func = agent.run_with_mask_softmax
+            elif self.mask_type == "input" and self.mask_transform_type == "quantize":
+                mask = torch.nn.Parameter(torch.randn(agent.observation_space_size), requires_grad=True)
+                rollout_func = agent.run_with_input_mask
+            elif self.mask_type == "input" and self.mask_transform_type == "softmax":
+                mask = torch.nn.Parameter(torch.randn(3, agent.observation_space_size), requires_grad=True)
+                rollout_func = agent.run_with_input_mask_softmax
+            return self._train_mask(mask, agent, sub_trajectory, rollout_func)
+        else:
+            if self.mask_transform_type == "quantize":
+                input_mask = torch.nn.Parameter(torch.randn(agent.observation_space_size), requires_grad=True)
+                internal_mask = torch.nn.Parameter(torch.randn(self.args.hidden_size), requires_grad=True)
+                rollout_func = agent.run_with_both_masks
+            elif self.mask_transform_type == "softmax":
+                input_mask = torch.nn.Parameter(torch.randn(3, agent.observation_space_size), requires_grad=True)
+                internal_mask = torch.nn.Parameter(torch.randn(3, self.args.hidden_size), requires_grad=True)
+                rollout_func = agent.run_with_both_masks_softmax
+            return self._train_mask_both(input_mask, internal_mask, agent, sub_trajectory, rollout_func)
+
+    def _train_mask(self, mask, agent: PPOAgent, trajectories: dict, rollout_func):
+        # Initialize the masks as trainable parameters with random values
+        # mask = torch.nn.Parameter(torch.randn(self.args.hidden_size), requires_grad=True)
+        optimizer = torch.optim.Adam([mask], lr=self.args.mask_learning_rate)
+
+        init_loss = None
+        best_loss = None
+        best_mask = None
+
+        steps = 0
+        # with tqdm(total=self.args.mask_learning_steps, desc="Mask Learning Steps") as pbar:
+        while steps < self.args.mask_learning_steps:
+            # Iterate over trajectories
+            for _, trajectory in trajectories.items():
+                if steps >= self.args.mask_learning_steps:
+                    break
+
+                # Forward pass with mask
+                envs = trajectory.get_state_sequence()
+                actions = trajectory.get_action_sequence()
+                agent.eval()
+
+                # Apply transformations to the mask
+                mask_transformed = self._mask_transform_func(mask)
+
+                # Generate a rollout with the mask
+                new_trajectory = rollout_func(envs, mask_transformed, trajectory.get_length())
+
+                # Calculate the mask loss            
+                # input_probs = torch.nn.functional.log_softmax(torch.stack(new_trajectory.logits), dim=0)
+                # target_probs = torch.nn.functional.softmax(torch.stack(trajectory.logits) , dim=0)
+                # loss_fn = torch.nn.KLDivLoss(reduction='batchmean')
+                # mask_loss = loss_fn(input_probs, target_probs)
+                loss_fn = torch.nn.CrossEntropyLoss()
+                mask_loss = loss_fn(torch.stack(new_trajectory.logits), torch.tensor(actions))
+                if not init_loss:
+                    init_loss = mask_loss.item()
+                    best_loss = init_loss
+                    best_mask = mask_transformed
+
+                # Backward pass and optimization
+                if mask_loss.item() < best_loss:
+                    best_loss = mask_loss.item()
+                    best_mask = mask_transformed
+                optimizer.zero_grad()
+                mask_loss.backward()
+                
+                # torch.nn.utils.clip_grad_norm_([mask], max_norm=self.args.max_grad_norm)
+                optimizer.step()
+
+                # Update progress
+                steps += 1
+
+        return best_mask.detach().data, init_loss, best_loss.item()
+
+    def _train_mask_both(self, input_mask, internal_mask, agent: PPOAgent, trajectories: dict, rollout_func):
+        # Initialize the masks as trainable parameters with random values
+        input_optimizer = torch.optim.Adam([input_mask], lr=self.args.mask_learning_rate)
+        internal_optimizer = torch.optim.Adam([internal_mask], lr=self.args.mask_learning_rate)
+
+        init_loss = None
+        best_loss = None
+        best_input_mask = None
+        best_internal_mask = None
+
+        steps = 0
+        # with tqdm(total=self.args.mask_learning_steps, desc="Mask Learning Steps") as pbar:
+        while steps < self.args.mask_learning_steps:
+            # Iterate over trajectories
+            for _, trajectory in trajectories.items():
+                if steps >= self.args.mask_learning_steps:
+                    break
+
+                # Forward pass with mask
+                envs = trajectory.get_state_sequence()
+                actions = trajectory.get_action_sequence()
+                agent.eval()
+
+                # Apply transformations to the mask
+                input_mask_discretized = self._mask_transform_func(input_mask)
+
+                internal_mask_discretized = self._mask_transform_func(internal_mask)
+
+                new_trajectory = rollout_func(envs, input_mask_discretized, internal_mask_discretized, trajectory.get_length())
+
+                loss_fn = torch.nn.CrossEntropyLoss()
+                mask_loss = loss_fn(torch.stack(new_trajectory.logits), torch.tensor(actions)) 
+
+                if not init_loss:
+                    init_loss = mask_loss.item()
+                    best_loss = init_loss
+                    best_input_mask = input_mask_discretized
+                    best_internal_mask = internal_mask_discretized
+
+                # Backward pass and optimization
+                if mask_loss.item() < best_loss:
+                    best_loss = mask_loss.item()
+                    best_input_mask = input_mask_discretized
+                    best_internal_mask = internal_mask_discretized
+
+                internal_optimizer.zero_grad()
+                mask_loss.backward(retain_graph=True)  
+                internal_optimizer.step()
+
+                if steps % self.args.input_update_frequency == 0:  
+                    input_optimizer.zero_grad()
+                    mask_loss.backward()  
+                    input_optimizer.step()
+                
+                # torch.nn.utils.clip_grad_norm_([mask], max_norm=self.args.max_grad_norm)
+
+                # Update progress
+                steps += 1
+
+        return (best_input_mask.detach().data, best_internal_mask.detach().data), init_loss, mask_loss.item()
 
 
 def evaluate_all_masks_for_model(masks, agents, num_steps, problem, trajectories, loss_evaluator, args, number_actions):
@@ -1067,7 +1195,7 @@ def evaluate_all_masks_levin_loss(args: Args, logger: logging.Logger):
             logger.info(f'Evaluating Problem: {problem}')
             model_path = f'binary/models/{model_directory}/seed={args.seed}/ppo_first_MODEL.pt'
             env = get_single_environment(args, seed=seed)
-            agent = PPOAgent(envs=env, hidden_size=args.hidden_size, discrete_masks=True)
+            agent = PPOAgent(envs=env, hidden_size=args.hidden_size)
             agent.load_state_dict(torch.load(model_path))
 
 
@@ -1176,16 +1304,18 @@ def main():
     logger.info(buffer)
     utils.logger_flush(logger)
 
+    module_extractor = LearnOptions(args, logger, mask_type="both", mask_transform_type="softmax")
+    module_extractor.discover()
+
     # evaluate_all_masks_levin_loss(args, logger)
     # hill_climbing_mask_space_training_data()
     # whole_dec_options_training_data_levin_loss()
     # hill_climbing_all_segments()
-    learn_options(args, logger)
+    # learn_options(args, logger)
 
     logger.info(f"Run id: {run_name}")
     logger.info(f"logs saved at {args.log_path}")
 
 
-    
 if __name__ == "__main__":
     main()

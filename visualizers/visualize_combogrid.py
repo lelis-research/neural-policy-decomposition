@@ -8,7 +8,7 @@ from utils.utils import get_logger
 from agents.trajectory import Trajectory
 from environments.environments_combogrid_gym import ComboGym
 from agents.policy_guided_agent import PPOAgent
-from pipelines.extract_subpolicy_ppo import Args, process_args, regenerate_trajectories
+from pipelines.option_discovery import Args, process_args, regenerate_trajectories
 
 def visualize(env: ComboGym, verbose=True):
     print(env._game)

@@ -176,7 +176,7 @@ def make_env_simple_crossing(*args, **kwargs):
                 seed=kwargs['seed'], max_episode_steps=1000, n_discrete_actions=3,
                 view_size=kwargs['view_size'], step_reward=-1, 
                 options=None if 'options' not in kwargs else kwargs['options'])
-        env = gym.wrappers.RecordEpisodeStatistics(env)
+        # env = gym.wrappers.RecordEpisodeStatistics(env)
         return env
 
     return thunk

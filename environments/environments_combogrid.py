@@ -38,7 +38,6 @@ class Problem:
 
     def _parse_problem(self, problem_str):
         problem_parts = problem_str.split("-")
-        print(problem_parts)
         initial = self._parse_position(problem_parts[0])
         goals = [self._parse_position(goal_str) for goal_str in problem_parts[1:]]
         return initial, goals

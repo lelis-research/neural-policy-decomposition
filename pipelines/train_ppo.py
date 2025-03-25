@@ -6,7 +6,7 @@ import tyro
 import numpy as np
 import gymnasium as gym
 from utils import utils
-from typing import Union, List
+from typing import Union, List, Tuple
 from dataclasses import dataclass
 from torch.utils.tensorboard import SummaryWriter
 from environments.environments_combogrid_gym import make_env as make_env_combogrid
@@ -26,7 +26,7 @@ class Args:
     choices from [ComboGrid, MiniGrid-SimpleCrossingS9N1-v0, MiniGrid-FourRooms-v0]
     """
     # env_seeds: Union[List[int], str] = (0,1,2) # SimpleCrossing
-    env_seeds: Union[List[int], str] = (0,1,2,3) # ComboGrid
+    env_seeds: Union[List, str, Tuple] = (0,1,2,3) # ComboGrid
     # env_seeds: Union[List[int], str] = (41,51,8) # FourRooms
     # env_seeds: Union[List[int], str] = (8,) # FourRooms
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'.
@@ -36,7 +36,7 @@ class Args:
     """if toggled, cuda will be enabled by default"""
     torch_deterministic: bool = True
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
-    track: bool = True
+    track: bool = False
     """if toggled, this experiment will be tracked with Weights and Biases"""
     track_tensorboard: bool = False
     """if toggled, this experiment will be tracked with Tensorboard SummaryWriter"""
@@ -52,19 +52,16 @@ class Args:
     # hyperparameter arguments
     game_width: int = 5
     """the length of the combo/mini-grid square"""
-    hidden_size: int = 6
+    hidden_size: int = 64
     """"""
     l1_lambda: float = 0
     """"""
     number_actions: int = 3
 
-    # combogrid parameters
-    combogrid_problems: List[str] = ("TL-BR", "TR-BL", "BR-TL", "BL-TR")
-    
     # Specific arguments
     total_timesteps: int = 1_500_000
     """total timesteps for testinging"""
-    learning_rate: Union[List[float], float] = (2.5e-4, 2.5e-4, 2.5e-4, 2.5e-4) # ComboGrid
+    learning_rate: Union[Tuple[float, ...], float] = (2.5e-4, 2.5e-4, 2.5e-4, 2.5e-4) # ComboGrid
     # learning_rate: Union[List[float], float] = (0.0005, 0.0005, 5e-05) # Vanilla RL FourRooms
     # learning_rate: Union[List[float], float] = (5e-05,) # Vanilla RL FourRooms
     # learning_rate: Union[List[float], float] = (0.0005, 0.001, 0.001) # SimpleCrossing
@@ -85,14 +82,14 @@ class Args:
     """the K epochs to update the policy for testinging"""
     norm_adv: bool = True
     """Toggles advantages normalization for testinging"""
-    clip_coef: Union[List[float], float] = (0.2, 0.2, 0.2, 0.2) # ComboGrid
+    clip_coef: Union[Tuple[float, ...], float] = (0.2, 0.2, 0.2, 0.2) # ComboGrid
     # clip_coef: Union[List[float], float] = (0.15, 0.1, 0.2) # Vanilla RL FourRooms
     # clip_coef: Union[List[float], float] = (0.2,) # Vanilla RL FourRooms
     # clip_coef: Union[List[float], float] = (0.25, 0.2, 0.2) # SimpleCrossing
     """the surrogate clipping coefficient"""
     clip_vloss: bool = True
     """Toggles whether or not to use a clipped loss for the value function, as per the paper."""
-    ent_coef: Union[List[float], float] = (0.01, 0.01, 0.01, .01) # ComboGrid
+    ent_coef:Union[Tuple[float, ...], float] = (0.01, 0.01, 0.01, .01) # ComboGrid
     # ent_coef: Union[List[float], float] = (0.05, 0.2, 0.0) # Vanilla RL FourRooms
     # ent_coef: Union[List[float], float] = (0.1, 0.1, 0.1) # SimpleCrossing
     """coefficient of the entropy"""
@@ -202,7 +199,9 @@ def main(args: Args):
               logger=logger, 
               writer=writer, 
               sparse_init=False)
-    wandb.finish()
+    if args.track:
+        wandb.finish()
+    # wandb.finish()
 
 
 if __name__ == "__main__":
@@ -227,7 +226,7 @@ if __name__ == "__main__":
     clip_coef = args.clip_coef
     ent_coef = args.ent_coef
     exp_id = args.exp_id
-    for i in range(len(args.env_seeds)):
+    for i in range(1, len(args.env_seeds)):
         args.env_seed = args.env_seeds[i]
         args.batch_size = int(args.num_envs * args.num_steps)
         args.minibatch_size = int(args.batch_size // args.num_minibatches)

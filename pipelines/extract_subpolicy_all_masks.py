@@ -1,7 +1,7 @@
 import itertools
 import torch
 import copy
-from extract_subpolicy_ppo import regenerate_trajectories
+from pipelines.option_discovery import regenerate_trajectories
 from agents.policy_guided_agent import PPOAgent
 from environments.environments_combogrid import ComboGym
 from losses import LevinLossActorCritic

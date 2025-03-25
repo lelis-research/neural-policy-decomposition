@@ -50,8 +50,16 @@ def regenerate_trajectories(args, verbose=False, logger=None):
 
 
 class LevinLossActorCritic:
-    def __init__(self, logger):
+    def __init__(self, logger, mask_type="internal", mask_transform_type="quantize"):
+        """
+        `mask_type` is a string that can be either "internal", "input", or "both".
+        `mask_transform_type` is a string that can be either "quantize" or "softmax".
+        """
         self.logger = logger
+        self.mask_type = mask_type
+        self.mask_transform_type = mask_transform_type
+        assert self.mask_type in ["internal", "input", "both"]
+        assert self.mask_transform_type in ["quantize", "softmax"]
 
     def is_applicable(self, trajectory, actions, start_index):
         """
@@ -76,7 +84,21 @@ class LevinLossActorCritic:
 
         It runs the masked model of the agent for the specified number of steps and it returns the actions taken for those steps. 
         """
-        trajectory = agent.run_with_mask(env, mask, numbers_steps)
+        if self.mask_type == "internal":
+            if self.mask_transform_type == "quantize":
+                trajectory = agent.run_with_mask(env, mask, numbers_steps)
+            elif self.mask_transform_type == "softmax":
+                trajectory = agent.run_with_mask_softmax(env, mask, numbers_steps)
+        elif self.mask_type == "input":
+            if self.mask_transform_type == "quantize":
+                trajectory = agent.run_with_input_mask(env, mask, numbers_steps)
+            elif self.mask_transform_type == "softmax": 
+                trajectory = agent.run_with_input_mask_softmax(env, mask, numbers_steps)
+        elif self.mask_type == "both":
+            if self.mask_transform_type == "quantize":
+                trajectory = agent.run_with_both_masks(env, mask[0], mask[1], numbers_steps)
+            elif self.mask_transform_type == "softmax": 
+                trajectory = agent.run_with_both_masks_softmax(env, mask[0], mask[1], numbers_steps)
 
         actions = []
         for _, action in trajectory.get_trajectory():

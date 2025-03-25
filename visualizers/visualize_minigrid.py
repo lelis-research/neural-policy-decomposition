@@ -8,9 +8,10 @@ from utils.utils import get_logger
 from agents.trajectory import Trajectory
 from environments.environments_minigrid import MiniGridWrap, get_training_tasks_simplecross, get_test_tasks_fourrooms
 from agents.policy_guided_agent import PPOAgent
-from pipelines.extract_subpolicy_ppo import Args, process_args, regenerate_trajectories
+from pipelines.option_discovery import Args, process_args, regenerate_trajectories
 
 def visualize(env: MiniGridWrap, verbose=True):
+    assert isinstance(env, MiniGridWrap)
     env_img = RGBImgObsWrapper(env.env)
     obs = env_img.unwrapped.gen_obs()
     if verbose:

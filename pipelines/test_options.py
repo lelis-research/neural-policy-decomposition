@@ -10,7 +10,7 @@ from logging import Logger
 from typing import Union, List
 from agents.policy_guided_agent import PPOAgent
 from torch.utils.tensorboard import SummaryWriter
-from pipelines.extract_subpolicy_ppo import load_options
+from pipelines.option_discovery import load_options
 from dataclasses import dataclass
 from training.train_ppo_agent import train_ppo
 from environments.environments_minigrid import make_env_four_rooms

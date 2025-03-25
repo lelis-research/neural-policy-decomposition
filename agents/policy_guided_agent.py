@@ -111,6 +111,7 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.constant_(layer.bias, bias_const)
     return layer
 
+
 def layer_sparse_init(m):
     if isinstance(m, nn.Linear):
         sparse_init(m.weight, sparsity=0.9)
@@ -176,34 +177,28 @@ class PPOAgent(nn.Module):
             action_space_size = envs.action_space[0].n.item()
         else:
             raise NotImplementedError
+        
+        self.observation_space_size = observation_space_size
+        self.action_space_size = action_space_size
 
         if sparse_init:
             print(f"Sparse initialization: {sparse_init}")
-            self.critic = nn.Sequential(
-                layer_sparse_init(nn.Linear(observation_space_size, 64)),
-                nn.Tanh(),
-                layer_sparse_init(nn.Linear(64, 64)),
-                nn.Tanh(),
-                layer_sparse_init(nn.Linear(64, 1)),
-            )
-            self.actor = nn.Sequential(
-                layer_sparse_init(nn.Linear(observation_space_size, hidden_size)),
-                nn.Tanh(),
-                layer_sparse_init(nn.Linear(hidden_size, action_space_size)),
-            )
+            layer_init_func = layer_sparse_init
         else:
-            self.critic = nn.Sequential(
-                layer_init(nn.Linear(observation_space_size, 64)),
+            layer_init_func = layer_init
+
+        self.critic = nn.Sequential(
+                layer_init_func(nn.Linear(observation_space_size, 64)),
                 nn.Tanh(),
-                layer_init(nn.Linear(64, 64)),
+                layer_init_func(nn.Linear(64, 64)),
                 nn.Tanh(),
-                layer_init(nn.Linear(64, 1)),
+                layer_init_func(nn.Linear(64, 1)),
             )
-            self.actor = nn.Sequential(
-                layer_init(nn.Linear(observation_space_size, hidden_size)),
-                nn.Tanh(),
-                layer_init(nn.Linear(hidden_size, action_space_size)),
-            )
+        self.actor = nn.Sequential(
+            layer_init_func(nn.Linear(observation_space_size, hidden_size)),
+            nn.ReLU(),
+            layer_init_func(nn.Linear(hidden_size, action_space_size)),
+        )
 
         # Option attributes
         self.mask = None
@@ -212,7 +207,7 @@ class PPOAgent(nn.Module):
         self.environment_args = None
         self.discrete_masks = discrete_masks
         self.extra_info = {}
-        
+    
     def get_value(self, x):
         return self.critic(x)
 
@@ -230,6 +225,38 @@ class PPOAgent(nn.Module):
         self.mask = mask
         self.option_size = option_size
         self.problem_id = problem
+    
+    def _masked_input_softmax(self, input, mask):
+        if mask is None or len(mask) == 0:
+            raise Exception("No mask is set for the agent.")
+        
+        return (mask[0] * 0) + (mask[1] * 1) + (mask[2] * input)
+    
+    def _masked_neuron_operation_softmax(self, logits, mask):
+        if mask is None or len(mask) == 0:
+            raise Exception("No mask is set for the agent.")
+        relu_out = torch.relu(logits)
+        
+        return (mask[0] * 0) + (mask[1] * logits) + (mask[2] * relu_out)
+
+    def _masked_input(self, input, mask):
+        """
+        Apply a mask to the input layer.
+
+        Parameters:
+            x (torch.Tensor): Input of the model; we assume binary values. 
+            mask (torch.Tensor): The mask controlling the operation, where:
+                                1 = pass one
+                                0 = pass zero
+                                -1 = pass the value of the input
+
+        Returns:
+            torch.Tensor: The post-masked inputs of the model.
+        """
+        if mask is None or len(mask) == 0:
+            raise Exception("No mask is set for the agent.")
+        
+        return mask * (mask - 1) / 2 * input + mask * (mask + 1) * 1 / 2
 
     def _masked_neuron_operation(self, logits, mask):
         """
@@ -261,13 +288,69 @@ class PPOAgent(nn.Module):
             output = mask_neg_one * relu_out + mask_pos_one * logits + mask_between * 0
         return output
 
+    def _masked_input_forward_softmax(self, x, mask):
+        x = self._masked_input_softmax(x, mask)
+        hidden_logits = self.actor[0](x)
+        hidden_tanh = self.actor[1](hidden_logits)
+        output_logits = self.actor[2](hidden_tanh)
+
+        probs = Categorical(logits=output_logits).probs
+        
+        return probs, output_logits
+
+    def _masked_input_forward(self, x, mask=None):
+        if mask is None:
+            mask = self.mask
+        x = self._masked_input(x, mask)
+        hidden_logits = self.actor[0](x)
+        hidden_tanh = self.actor[1](hidden_logits)
+        output_logits = self.actor[2](hidden_tanh)
+
+        probs = Categorical(logits=output_logits).probs
+        
+        return probs, output_logits
+
+    def _both_masked_forward_softmax(self, x, input_mask, internal_mask):
+        x = self._masked_input_softmax(x, input_mask)
+        hidden_logits = self.actor[0](x)
+        # hidden_tanh = self.actor[1](hidden_logits)
+        hidden = self._masked_neuron_operation_softmax(hidden_logits, internal_mask)
+        hidden_tanh = self.actor[1](hidden)
+        output_logits = self.actor[2](hidden_tanh)
+
+        probs = Categorical(logits=output_logits).probs
+        
+        return probs, output_logits
+
+    def _both_masked_forward(self, x, input_mask, internal_mask):
+        x = self._masked_input(x, input_mask)
+        hidden_logits = self.actor[0](x)
+        hidden = self._masked_neuron_operation(hidden_logits, internal_mask)
+        hidden_tanh = self.actor[1](hidden)
+        output_logits = self.actor[2](hidden_tanh)
+
+        probs = Categorical(logits=output_logits).probs
+        
+        return probs, output_logits
+
+    def _masked_forward_softmax(self, x, mask=None):
+        if mask is None:
+            mask = self.mask
+        hidden_logits = self.actor[0](x)
+        hidden = self._masked_neuron_operation_softmax(hidden_logits, mask)
+        hidden_tanh = self.actor[1](hidden)
+        output_logits = self.actor[2](hidden_tanh)
+
+        probs = Categorical(logits=output_logits).probs
+        
+        return probs, output_logits
+
     def _masked_forward(self, x, mask=None):
         if mask is None:
             mask = self.mask
         hidden_logits = self.actor[0](x)
         hidden = self._masked_neuron_operation(hidden_logits, mask)
-        hidden_tanh = self.actor[1](hidden)
-        output_logits = self.actor[2](hidden_tanh)
+        output_logits = self.actor[2](hidden)
 
         probs = Categorical(logits=output_logits).probs
         
@@ -323,12 +406,37 @@ class PPOAgent(nn.Module):
 
         return trajectory
     
-    def get_action_with_mask(self, x_tensor, mask=None):
+    def _get_action_with_both_masks_softmax(self, x_tensor, input_mask, internal_mask):
+        prob_actions, logits = self._both_masked_forward_softmax(x_tensor, input_mask, internal_mask)
+        a = torch.argmax(prob_actions).item()
+        return a, logits
+
+    def _get_action_with_both_masks(self, x_tensor, input_mask, internal_mask):
+        prob_actions, logits = self._both_masked_forward(x_tensor, input_mask, internal_mask)
+        a = torch.argmax(prob_actions).item()
+        return a, logits
+
+    def _get_action_with_input_mask_softmax(self, x_tensor, mask=None):
+        prob_actions, logits = self._masked_input_forward_softmax(x_tensor, mask)
+        a = torch.argmax(prob_actions).item()
+        return a, logits
+
+    def _get_action_with_input_mask(self, x_tensor, mask=None):
+        prob_actions, logits = self._masked_input_forward(x_tensor, mask)
+        a = torch.argmax(prob_actions).item()
+        return a, logits
+
+    def _get_action_with_mask(self, x_tensor, mask=None):
         prob_actions, logits = self._masked_forward(x_tensor, mask)
         a = torch.argmax(prob_actions).item()
         return a, logits
     
-    def run_with_mask(self, envs, mask, max_size_sequence):
+    def _get_action_with_mask_softmax(self, x_tensor, mask=None):
+        prob_actions, logits = self._masked_forward_softmax(x_tensor, mask)
+        a = torch.argmax(prob_actions).item()
+        return a, logits
+
+    def run_with_mask_softmax(self, envs, mask, max_size_sequence):
         trajectory = Trajectory()
 
         length = 0
@@ -337,7 +445,7 @@ class PPOAgent(nn.Module):
             while not env.is_over():
                 env = envs[length]
                 x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
-                a, logits = self.get_action_with_mask(x_tensor, mask)
+                a, logits = self._get_action_with_mask_softmax(x_tensor, mask)
                 trajectory.add_pair(copy.deepcopy(env), a, logits=logits[0])
 
                 length += 1
@@ -348,7 +456,167 @@ class PPOAgent(nn.Module):
             while not envs.is_over():
                 x_tensor = torch.tensor(envs.get_observation(), dtype=torch.float32).view(1, -1)
 
-                a, logits = self.get_action_with_mask(x_tensor, mask)
+                a, logits = self._get_action_with_mask_softmax(x_tensor, mask)
+                
+                trajectory.add_pair(copy.deepcopy(envs), a, logits=logits[0])
+                envs.step(a)
+
+                length += 1
+
+                if length >= max_size_sequence:
+                    return trajectory
+
+        return trajectory
+    
+    def run_with_mask(self, envs, mask, max_size_sequence):
+        trajectory = Trajectory()
+
+        length = 0
+        if isinstance(envs, list):
+            env = envs[length]
+            while not env.is_over():
+                env = envs[length]
+                x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
+                a, logits = self._get_action_with_mask(x_tensor, mask)
+                trajectory.add_pair(copy.deepcopy(env), a, logits=logits[0])
+
+                length += 1
+
+                if length >= max_size_sequence:
+                    return trajectory
+        else:
+            while not envs.is_over():
+                x_tensor = torch.tensor(envs.get_observation(), dtype=torch.float32).view(1, -1)
+
+                a, logits = self._get_action_with_mask(x_tensor, mask)
+                
+                trajectory.add_pair(copy.deepcopy(envs), a, logits=logits[0])
+                envs.step(a)
+
+                length += 1
+
+                if length >= max_size_sequence:
+                    return trajectory
+
+        return trajectory
+    
+    def run_with_both_masks_softmax(self, envs, input_mask, internal_mask, max_size_sequence):
+        trajectory = Trajectory()
+
+        length = 0
+        if isinstance(envs, list):
+            env = envs[length]
+            while not env.is_over():
+                env = envs[length]
+                x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
+                a, logits = self._get_action_with_both_masks_softmax(x_tensor, input_mask, internal_mask)
+                trajectory.add_pair(copy.deepcopy(env), a, logits=logits[0])
+
+                length += 1
+
+                if length >= max_size_sequence:
+                    return trajectory
+        else:
+            while not envs.is_over():
+                x_tensor = torch.tensor(envs.get_observation(), dtype=torch.float32).view(1, -1)
+
+                a, logits = self._get_action_with_both_masks_softmax(x_tensor, input_mask, internal_mask)
+                
+                trajectory.add_pair(copy.deepcopy(envs), a, logits=logits[0])
+                envs.step(a)
+
+                length += 1
+
+                if length >= max_size_sequence:
+                    return trajectory
+
+        return trajectory
+
+    def run_with_both_masks(self, envs, input_mask, internal_mask, max_size_sequence):
+        trajectory = Trajectory()
+
+        length = 0
+        if isinstance(envs, list):
+            env = envs[length]
+            while not env.is_over():
+                env = envs[length]
+                x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
+                a, logits = self._get_action_with_both_masks(x_tensor, input_mask, internal_mask)
+                trajectory.add_pair(copy.deepcopy(env), a, logits=logits[0])
+
+                length += 1
+
+                if length >= max_size_sequence:
+                    return trajectory
+        else:
+            while not envs.is_over():
+                x_tensor = torch.tensor(envs.get_observation(), dtype=torch.float32).view(1, -1)
+
+                a, logits = self._get_action_with_both_masks(x_tensor, input_mask, internal_mask)
+                
+                trajectory.add_pair(copy.deepcopy(envs), a, logits=logits[0])
+                envs.step(a)
+
+                length += 1
+
+                if length >= max_size_sequence:
+                    return trajectory
+
+        return trajectory
+
+    def run_with_input_mask_softmax(self, envs, mask, max_size_sequence):
+        trajectory = Trajectory()
+
+        length = 0
+        if isinstance(envs, list):
+            env = envs[length]
+            while not env.is_over():
+                env = envs[length]
+                x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
+                a, logits = self._get_action_with_input_mask_softmax(x_tensor, mask)
+                trajectory.add_pair(copy.deepcopy(env), a, logits=logits[0])
+
+                length += 1
+
+                if length >= max_size_sequence:
+                    return trajectory
+        else:
+            while not envs.is_over():
+                x_tensor = torch.tensor(envs.get_observation(), dtype=torch.float32).view(1, -1)
+
+                a, logits = self._get_action_with_input_mask_softmax(x_tensor, mask)
+                
+                trajectory.add_pair(copy.deepcopy(envs), a, logits=logits[0])
+                envs.step(a)
+
+                length += 1
+
+                if length >= max_size_sequence:
+                    return trajectory
+
+        return trajectory
+
+    def run_with_input_mask(self, envs, mask, max_size_sequence):
+        trajectory = Trajectory()
+
+        length = 0
+        if isinstance(envs, list):
+            env = envs[length]
+            while not env.is_over():
+                env = envs[length]
+                x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
+                a, logits = self._get_action_with_input_mask(x_tensor, mask)
+                trajectory.add_pair(copy.deepcopy(env), a, logits=logits[0])
+
+                length += 1
+
+                if length >= max_size_sequence:
+                    return trajectory
+        else:
+            while not envs.is_over():
+                x_tensor = torch.tensor(envs.get_observation(), dtype=torch.float32).view(1, -1)
+
+                a, logits = self._get_action_with_input_mask(x_tensor, mask)
                 
                 trajectory.add_pair(copy.deepcopy(envs), a, logits=logits[0])
                 envs.step(a)

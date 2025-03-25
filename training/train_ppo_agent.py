@@ -31,7 +31,7 @@ def train_ppo(envs: gym.vector.SyncVectorEnv, seed, args, model_file_name, devic
     # TRY NOT TO MODIFY: start the game
     global_step = 0
     start_time = time.time()
-    next_obs, _ = envs.reset(seed=seed)
+    next_obs, _ = envs.reset(seed=[seed for _ in range(args.num_envs)])
 
     next_obs = torch.Tensor(next_obs).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
@@ -50,7 +50,7 @@ def train_ppo(envs: gym.vector.SyncVectorEnv, seed, args, model_file_name, devic
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
-                action, logprob, _, value, _ = agent.get_action_and_value(next_obs)
+                action, logprob, _, value, _ = agent.get_action_and_value(next_obs, deterministic=False)
                 values[step] = value.flatten()
             actions[step] = action
             logprobs[step] = logprob
@@ -82,10 +82,11 @@ def train_ppo(envs: gym.vector.SyncVectorEnv, seed, args, model_file_name, devic
                 if returns:
                     avg_return = sum(returns) / len(returns)
                     avg_length = sum(lengths) / len(lengths)
-                    wandb.log({
-                        "Charts/episodic_return_avg": avg_return, 
-                        "Charts/episodic_length_avg": avg_length
-                    }, step=global_step)
+                    if args.track:
+                        wandb.log({
+                            "Charts/episodic_return_avg": avg_return, 
+                            "Charts/episodic_length_avg": avg_length
+                        }, step=global_step)
                     if writer:
                         writer.add_scalar("Charts/episodic_return", avg_return, global_step)
                         writer.add_scalar("Charts/episodic_length", avg_length, global_step)
@@ -125,7 +126,7 @@ def train_ppo(envs: gym.vector.SyncVectorEnv, seed, args, model_file_name, devic
                 end = start + args.minibatch_size
                 mb_inds = b_inds[start:end]
 
-                _, newlogprob, entropy, newvalue, _ = agent.get_action_and_value(b_obs[mb_inds], b_actions.long()[mb_inds])
+                _, newlogprob, entropy, newvalue, _ = agent.get_action_and_value(b_obs[mb_inds], b_actions.long()[mb_inds], deterministic=False)
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
@@ -192,18 +193,19 @@ def train_ppo(envs: gym.vector.SyncVectorEnv, seed, args, model_file_name, devic
             writer.add_scalar("losses/explained_variance", explained_var, global_step)
             writer.add_scalar("Charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
-        wandb.log({
-            "Charts/learning_rate": optimizer.param_groups[0]["lr"],
-            "losses/value_loss": v_loss.item(),
-            "losses/policy_loss": pg_loss.item(),
-            "losses/entropy": entropy_loss.item(),
-            "losses/old_approx_kl": old_approx_kl.item(),
-            "losses/approx_kl": approx_kl.item(),
-            "losses/clipfrac": np.mean(clipfracs),
-            "losses/l1_reg": l1_reg.item(),
-            "losses/explained_variance": explained_var,
-            "Charts/SPS": int(global_step / (time.time() - start_time))
-        }, step=global_step)
+        if args.track:
+            wandb.log({
+                "Charts/learning_rate": optimizer.param_groups[0]["lr"],
+                "losses/value_loss": v_loss.item(),
+                "losses/policy_loss": pg_loss.item(),
+                "losses/entropy": entropy_loss.item(),
+                "losses/old_approx_kl": old_approx_kl.item(),
+                "losses/approx_kl": approx_kl.item(),
+                "losses/clipfrac": np.mean(clipfracs),
+                "losses/l1_reg": l1_reg.item(),
+                "losses/explained_variance": explained_var,
+                "Charts/SPS": int(global_step / (time.time() - start_time))
+            }, step=global_step)
         
         if iteration % 1000 == 0:
             logger.info(f"Global steps: {global_step}")

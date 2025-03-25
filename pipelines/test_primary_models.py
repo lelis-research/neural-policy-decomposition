@@ -1,4 +1,4 @@
-from pipelines.extract_subpolicy_ppo import regenerate_trajectories, process_args, get_single_environment, load_options
+from pipelines.option_discovery import regenerate_trajectories, process_args, get_single_environment, load_options
 from utils import utils
 from agents.policy_guided_agent import PPOAgent
 import random
@@ -8,10 +8,10 @@ import torch
 args = process_args()
 
 args.model_paths = (
-        'train_ppoAgent_ComboGrid_gw5_h6_l10_lr0.00025_clip0.2_ent0.01_envsd0_TL-BR',
-        'train_ppoAgent_ComboGrid_gw5_h6_l10_lr0.00025_clip0.2_ent0.01_envsd1_TR-BL',
-        'train_ppoAgent_ComboGrid_gw5_h6_l10_lr0.00025_clip0.2_ent0.01_envsd2_BR-TL',
-        'train_ppoAgent_ComboGrid_gw5_h6_l10_lr0.00025_clip0.2_ent0.01_envsd3_BL-TR'
+        'train_ppoAgent_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_envsd0_TL-BR',
+        'train_ppoAgent_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_envsd1_TR-BL',
+        'train_ppoAgent_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_envsd2_BR-TL',
+        'train_ppoAgent_ComboGrid_gw5_h64_l10_lr0.00025_clip0.2_ent0.01_envsd3_BL-TR'
         )
 
 lengths = {}

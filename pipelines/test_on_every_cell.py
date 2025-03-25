@@ -3,7 +3,7 @@ import tyro
 from utils import utils
 from typing import Union, List
 from pipelines.losses import LevinLossActorCritic
-from pipelines.extract_subpolicy_ppo import load_options
+from pipelines.option_discovery import load_options
 from dataclasses import dataclass
 from environments.environments_combogrid import PROBLEM_NAMES as COMMBOGRID_NAMES
 
