@@ -958,7 +958,7 @@ class LearnOptions:
             selected_option_sizes.append(best_mask_model.option_size)
             selected_options.append(best_mask_model)
             selected_options_problem.append(best_mask_model.problem_id)
-            best_loss = self.levin_loss.compute_loss(selected_masks, selected_options, "", trajectories, number_actions, selected_option_sizes)
+            best_loss = self.levin_loss.compute_loss(selected_masks, selected_options, "", trajectories, self.number_actions, selected_option_sizes)
 
             self.logger.info(f"Added option #{len(selected_options)}; Levin loss of the current selected set: {best_loss} on all trajectories")
             utils.logger_flush(self.logger)

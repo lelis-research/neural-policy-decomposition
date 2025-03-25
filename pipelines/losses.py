@@ -220,7 +220,12 @@ class LevinLossActorCritic:
                         if self.is_applicable(t, actions, j):
                             M[j + len(actions)] = min(M[j + len(actions)], M[j] + 1)
 
-                            mask_name = 'o' + str(i) + "-" + str(options[i].mask.detach().cpu().numpy())
+                            if isinstance(options[i].mask, torch.Tensor):
+                                mask_name = 'o' + str(i) + "-" + str(options[i].mask.detach().cpu().numpy())
+                            else:
+                                mask_name = 'o' + str(i) + "-" + str(options[i].mask[0])
+                                mask_name += 'o' + str(i) + "-" + str(options[i].mask[1])
+
                             if mask_name not in mask_usage:
                                 mask_usage[mask_name] = []
 
