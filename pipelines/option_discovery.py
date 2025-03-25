@@ -1304,7 +1304,9 @@ def main():
     logger.info(buffer)
     utils.logger_flush(logger)
 
-    module_extractor = LearnOptions(args, logger, mask_type="both", mask_transform_type="softmax")
+    logger.info('mask_type="internal", mask_transform_type="softmax"')
+
+    module_extractor = LearnOptions(args, logger, mask_type="internal", mask_transform_type="softmax")
     module_extractor.discover()
 
     # evaluate_all_masks_levin_loss(args, logger)
