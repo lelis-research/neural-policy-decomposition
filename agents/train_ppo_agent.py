@@ -44,7 +44,7 @@ def train_model(env_name=None, model_idx=None, use_options=None):
         model_idx = args.problem_index
     if use_options is None:
         use_options = args.use_options
-    run_name = f"{env_name}-{model_idx}-lr{args.learning_rate}-num_step{args.num_steps}-clip_coef{args.clip_coef}-ent_coef{args.ent_coef}-epoch{args.update_epochs}-vloss{args.clip_vloss}-visit{args.visitation_bonus}-actor{args.actor_layer_size}-critic{args.critic_layer_size}"
+    run_name = f"{use_options}-{env_name}-{model_idx}-lr{args.learning_rate}-num_step{args.num_steps}-clip_coef{args.clip_coef}-ent_coef{args.ent_coef}-epoch{args.update_epochs}-vloss{args.clip_vloss}-visit{args.visitation_bonus}-actor{args.actor_layer_size}-critic{args.critic_layer_size}"
     print(run_name)
     if args.track:
         import wandb

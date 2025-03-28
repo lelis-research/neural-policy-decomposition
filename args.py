@@ -11,7 +11,7 @@ class Args:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
-    track: bool = True
+    track: bool = False
     """if toggled, this experiment will be tracked with Weights and Biases"""
     wandb_project_name: str = "PPOFourrooms"
     """the wandb's project name"""
@@ -82,9 +82,9 @@ class Args:
     "actor layer size"
     critic_layer_size: int = 64
     "critic layer size"
-    use_options: int = 1
+    use_options: int = 0
     "set to 0 for not using options, and 1 for using options when training"
-    quantized: int = 1
+    quantized: int = 0
     "set to 0 for models without quantized hidden states, and 1 models with quantized hidden states"
 
     # to be filled in runtime

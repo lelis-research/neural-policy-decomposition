@@ -166,7 +166,9 @@ class GruAgent(nn.Module):
             h, gru_state = self.gru(h.unsqueeze(0), (1.0 - d).view(1, -1, 1) * gru_state)
             if self.quantized == 1:
                 gru_state = STEQuantize.apply(gru_state)
-            new_hidden += [h]
+                new_hidden += [STEQuantize.apply(h)]
+            else:
+                new_hidden += [h]
         new_hidden = torch.flatten(torch.cat(new_hidden), 0, 1)
         return new_hidden, gru_state
 

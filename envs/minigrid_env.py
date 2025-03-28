@@ -55,7 +55,7 @@ class MiniGridWrap(gym.Env):
         #     int(self.goal_position[0] / self.env.height),
         #     self.goal_position[0] % self.env.width,
         # )
-        self.agent_pos = self.env.agent_pos
+        self.agent_pos = self.env.unwrapped.agent_pos
 
     def setup_options(self, options):
         self.action_space = gym.spaces.Discrete(self.action_space.n + len(options))
@@ -83,7 +83,7 @@ class MiniGridWrap(gym.Env):
         return OBJECT_TO_ONEHOT[direction]
 
     def observation(self):
-        obs = self.env.gen_obs()
+        obs = self.env.unwrapped.gen_obs()
         image = self.one_hot_encode(
             self.env.observation(obs)["image"][:, :, 0].flatten()
         )

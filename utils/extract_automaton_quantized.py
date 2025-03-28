@@ -132,6 +132,8 @@ class Automaton:
                 else:
                     terminate = True
             elif len(mode._transitions) == 1:
+                    if mode == self._modes[list(mode._transitions)[0]]:
+                        terminate = True
                     mode = self._modes[list(mode._transitions)[0]]
                     h = torch.tensor(mode._h).view(1, -1).unsqueeze(1)
             else:
