@@ -48,12 +48,13 @@ def main(args: Args):
     
     loss = LevinLossActorCritic(logger)
 
-    options, _ = load_options(args, logger)
+    options, trajectories = load_options(args, logger)
 
     logger.info("Testing on each grid cell")
     for seed, problem in zip(args.env_seeds, args.problems):
         logger.info(f"Testing on each cell..., {problem}")
         loss.evaluate_on_each_cell(options=options, 
+                                   trajectories=trajectories,
                                    problem_test=problem, 
                                    args=args, 
                                    seed=seed, 

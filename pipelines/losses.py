@@ -127,9 +127,9 @@ class LevinLossActorCritic:
                 if joint_problem_name_list[j] == problem_str:
                     continue
                 for i in range(len(masks)):
-                    if j + number_steps[i] >= len(t):
-                        continue
-                    if any([joint_problem_name_list[j+k] == problem_str for k in range(1, number_steps[i])]):
+                    # if j + number_steps[i] >= len(t):
+                    #     continue
+                    if any([joint_problem_name_list[min(j+k, len(t) - 1)] == problem_str for k in range(1, number_steps[i])]):
                         continue
                     actions = self._run(copy.deepcopy(t[j][0]), masks[i], models[i], number_steps[i])
 
@@ -247,7 +247,7 @@ class LevinLossActorCritic:
                 logger.info(buffer)
             logger.info(f'Number of Decisions:  {M[len(t)]}')
 
-    def evaluate_on_each_cell(self, options: List[PPOAgent], problem_test, args, seed: int, logger=None):
+    def evaluate_on_each_cell(self, options: List[PPOAgent], trajectories: dict, problem_test, args, seed: int, logger=None):
         """
         This test is to see for each cell, options will give which sequence of actions
         """
@@ -273,7 +273,6 @@ class LevinLossActorCritic:
         else:
             raise NotImplementedError
         
-        trajectories = regenerate_trajectories(args)
         for problem, t in trajectories.items():
             actions = t.get_action_sequence()
             t_str = [DIRECTIONS[tuple(actions[i:i+3])] for i in range(0, t.get_length(), 3)]
