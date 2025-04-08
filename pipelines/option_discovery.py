@@ -34,9 +34,9 @@ class Args:
     env_seeds: Union[List, str, Tuple] = (0,1,2,3)
     """seeds used to generate the trained models. It can also specify a closed interval using a string of format 'start,end'."""
     # model_paths: List[str] = (
-    #     'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_envsd0',
-    #     'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd1',
-    #     'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd2'
+    #     'train_ppoAgent_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.0005_clip0.25_ent0.1_envsd0',
+    #     'train_ppoAgent_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd1',
+    #     'train_ppoAgent_MiniGrid-SimpleCrossingS9N1-v0_gw5_h64_l10_lr0.001_clip0.2_ent0.1_envsd2'
     # )
     # model_paths: List[str] = (
     #     'train_ppoAgent_randomInit_MiniGrid-SimpleCrossingS9N1-v0_gw5_h6_l10_lr0.0005_clip0.25_ent0.1_envsd0',
@@ -84,11 +84,16 @@ class Args:
     # mask learning
     mask_learning_rate: float = 0.001
     """"""
-    mask_learning_steps: int = 1_000
+    mask_learning_steps: int = 2_000
     """"""
     max_grad_norm: float = 1.0
     """"""
     input_update_frequency: int = 1
+    """"""
+    mask_type: str = "input"
+    """It's one of these: [internal, input, both]"""
+    mask_transform_type: str = "softmax"
+    """It's either `softmax` or `quantize`"""
 
     # Script arguments
     seed: int = 0
@@ -886,7 +891,9 @@ class LearnOptions:
                 # Submit tasks to the executor with all required arguments
                 futures = []
                 for length in range(2, t_length + 1):
-                    for s in range(t_length - length):
+                    # if length > 3: # TODO: experimental, change in the future
+                    #     break
+                    for s in range(t_length - length + 1):
                             for primary_problem, (primary_seed, primary_model_path, parimary_agent) in mimicing_agents.items():
                                 future = executor.submit(
                                     self._train_mask_iter, trajectories, target_problem, s, length, parimary_agent)
@@ -1066,7 +1073,7 @@ class LearnOptions:
                 # Update progress
                 steps += 1
 
-        return best_mask.detach().data, init_loss, best_loss.item()
+        return best_mask.detach().data, init_loss, best_loss
 
     def _train_mask_both(self, input_mask, internal_mask, agent: PPOAgent, trajectories: dict, rollout_func):
         # Initialize the masks as trainable parameters with random values
@@ -1304,9 +1311,9 @@ def main():
     logger.info(buffer)
     utils.logger_flush(logger)
 
-    logger.info('mask_type="internal", mask_transform_type="softmax"')
+    logger.info(f'mask_type="{args.mask_type}", mask_transform_type="{args.mask_transform_type}"')
 
-    module_extractor = LearnOptions(args, logger, mask_type="internal", mask_transform_type="softmax")
+    module_extractor = LearnOptions(args, logger, mask_type=args.mask_type, mask_transform_type=args.mask_transform_type)
     module_extractor.discover()
 
     # evaluate_all_masks_levin_loss(args, logger)

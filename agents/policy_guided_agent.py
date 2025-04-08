@@ -178,6 +178,7 @@ class PPOAgent(nn.Module):
         else:
             raise NotImplementedError
         
+        self.hidden_size = hidden_size
         self.observation_space_size = observation_space_size
         self.action_space_size = action_space_size
 
@@ -202,6 +203,8 @@ class PPOAgent(nn.Module):
 
         # Option attributes
         self.mask = None
+        self.mask_transform_type = None
+        self.mask_type = None # internal/input/both
         self.option_size = None
         self.problem_id = None
         self.environment_args = None
@@ -223,6 +226,20 @@ class PPOAgent(nn.Module):
     
     def to_option(self, mask, option_size, problem):
         self.mask = mask
+        if isinstance(mask, tuple):
+            self.mask_type = "both"
+            print(mask[0].shape)
+            mask_dim = mask[0].shape[0]
+        elif mask.shape[1] == self.observation_space_size:
+            self.mask_type = "input"
+            mask_dim = mask.shape[0]
+        elif mask.shape[1] == self.hidden_size:
+            self.mask_type = "internal"
+            mask_dim = mask.shape[0]
+        else:
+            raise Exception(f"The mask {mask} is of invalid type")
+
+        self.mask_transform_type = "softmax" if mask_dim == 3 else "quantize"
         self.option_size = option_size
         self.problem_id = problem
     
@@ -435,6 +452,25 @@ class PPOAgent(nn.Module):
         prob_actions, logits = self._masked_forward_softmax(x_tensor, mask)
         a = torch.argmax(prob_actions).item()
         return a, logits
+
+    def get_action_with_mask(self, x_tensor, mask=None):
+        if mask == None:
+            mask = self.mask
+        if self.mask_type == "internal":
+            if self.mask_transform_type == "softmax":
+                return self._get_action_with_mask_softmax(x_tensor, mask)
+            else:
+                return self._get_action_with_mask(x_tensor, mask)
+        elif self.mask_type == "input":
+            if self.mask_transform_type == "softmax":
+                return self._get_action_with_input_mask_softmax(x_tensor, mask)
+            else:
+                return self._get_action_with_input_mask(x_tensor, mask)
+        if self.mask_type == "both":
+            if self.mask_transform_type == "softmax":
+                return self._get_action_with_both_masks_softmax(x_tensor, input_mask=mask[0], internal_mask=mask[1])
+            else:
+                return self._get_action_with_both_masks(x_tensor, input_mask=mask[0], internal_mask=mask[1])
 
     def run_with_mask_softmax(self, envs, mask, max_size_sequence):
         trajectory = Trajectory()
