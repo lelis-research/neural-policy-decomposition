@@ -330,10 +330,8 @@ class PPOAgent(nn.Module):
     def _both_masked_forward_softmax(self, x, input_mask, internal_mask):
         x = self._masked_input_softmax(x, input_mask)
         hidden_logits = self.actor[0](x)
-        # hidden_tanh = self.actor[1](hidden_logits)
         hidden = self._masked_neuron_operation_softmax(hidden_logits, internal_mask)
-        hidden_tanh = self.actor[1](hidden)
-        output_logits = self.actor[2](hidden_tanh)
+        output_logits = self.actor[2](hidden)
 
         probs = Categorical(logits=output_logits).probs
         
@@ -343,8 +341,7 @@ class PPOAgent(nn.Module):
         x = self._masked_input(x, input_mask)
         hidden_logits = self.actor[0](x)
         hidden = self._masked_neuron_operation(hidden_logits, internal_mask)
-        hidden_tanh = self.actor[1](hidden)
-        output_logits = self.actor[2](hidden_tanh)
+        output_logits = self.actor[2](hidden)
 
         probs = Categorical(logits=output_logits).probs
         
@@ -355,8 +352,7 @@ class PPOAgent(nn.Module):
             mask = self.mask
         hidden_logits = self.actor[0](x)
         hidden = self._masked_neuron_operation_softmax(hidden_logits, mask)
-        hidden_tanh = self.actor[1](hidden)
-        output_logits = self.actor[2](hidden_tanh)
+        output_logits = self.actor[2](hidden)
 
         probs = Categorical(logits=output_logits).probs
         
@@ -404,23 +400,6 @@ class PPOAgent(nn.Module):
         
         self._h = None
         if verbose: print("End Trajectory \n\n")
-        return trajectory
-
-    def run_with_relu_state(self, env, model):
-        trajectory = Trajectory()
-        current_length = 0
-
-        while not env.is_over():
-            x_tensor = torch.tensor(env.get_observation(), dtype=torch.float32).view(1, -1)
-            prob_actions, hidden_logits = model.forward_and_return_hidden_logits(x_tensor)
-            a = torch.argmax(prob_actions).item()
-            
-            trajectory.add_pair(copy.deepcopy(env), a)
-            print(env.get_observation(), a, (hidden_logits >= 0).float().numpy().tolist())
-            env.apply_action(a)
-
-            current_length += 1  
-
         return trajectory
     
     def _get_action_with_both_masks_softmax(self, x_tensor, input_mask, internal_mask):

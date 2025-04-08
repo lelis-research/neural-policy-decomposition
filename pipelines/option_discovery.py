@@ -26,7 +26,7 @@ from utils.utils import timing_decorator
 
 @dataclass
 class Args:
-    exp_name: str = "extract_learnOption"
+    exp_name: str = "extract_learnOption_maxlength3"
     # exp_name: str = "extract_decOptionWhole_sparseInit"
     # exp_name: str = "extract_learnOptions_randomInit_discreteMasks"
     # exp_name: str = "extract_learnOptions_randomInit_pitisFunction"
@@ -891,6 +891,7 @@ class LearnOptions:
                 # Submit tasks to the executor with all required arguments
                 futures = []
                 for length in range(2, t_length + 1):
+<<<<<<< HEAD
                     # if length > 3: # TODO: experimental, change in the future
                     #     break
                     for s in range(t_length - length + 1):
@@ -903,6 +904,23 @@ class LearnOptions:
                                 future.primary_env_seed = primary_seed
                                 future.primary_model_path = primary_model_path
                                 futures.append(future)
+=======
+                    # if length != 3: # TODO: experimental; remove later
+                    #     continue
+                    for s in range(t_length - length):
+                        actions = trajectories[target_problem].slice(s, n=length).get_action_sequence()
+                        # if actions not in [[0,0,1], [2,1,0],[1,0,2], [0,1,2]]:
+                        #     continue
+                        for primary_problem, (primary_seed, primary_model_path, parimary_agent) in mimicing_agents.items():
+                            future = executor.submit(
+                                self._train_mask_iter, trajectories, target_problem, s, length, parimary_agent)
+                            future.s = s,
+                            future.length = length
+                            future.primary_problem = primary_problem
+                            future.primary_env_seed = primary_seed
+                            future.primary_model_path = primary_model_path
+                            futures.append(future)
+>>>>>>> c477ae5d9d5b1794284b6bfe7cf106d71933cd9c
 
                 # Process the results as they complete
                 for future in concurrent.futures.as_completed(futures):
@@ -967,7 +985,8 @@ class LearnOptions:
             selected_options_problem.append(best_mask_model.problem_id)
             best_loss = self.levin_loss.compute_loss(selected_masks, selected_options, "", trajectories, self.number_actions, selected_option_sizes)
 
-            self.logger.info(f"Added option #{len(selected_options)}; Levin loss of the current selected set: {best_loss} on all trajectories")
+            if previous_loss is None or best_loss < previous_loss:
+                self.logger.info(f"Added option #{len(selected_options)}; Levin loss of the current selected set: {best_loss} on all trajectories")
             utils.logger_flush(self.logger)
 
         # remove the last automaton added
@@ -1313,7 +1332,11 @@ def main():
 
     logger.info(f'mask_type="{args.mask_type}", mask_transform_type="{args.mask_transform_type}"')
 
+<<<<<<< HEAD
     module_extractor = LearnOptions(args, logger, mask_type=args.mask_type, mask_transform_type=args.mask_transform_type)
+=======
+    module_extractor = LearnOptions(args, logger, mask_type="input", mask_transform_type="softmax")
+>>>>>>> c477ae5d9d5b1794284b6bfe7cf106d71933cd9c
     module_extractor.discover()
 
     # evaluate_all_masks_levin_loss(args, logger)
