@@ -1082,16 +1082,27 @@ class LearnOptions:
         max_num_options = 10
         best_selected_options = []
         best_levin_loss_total = float('Inf')
-
+        completed = 0
         with concurrent.futures.ProcessPoolExecutor(max_workers=self.args.cpus) as executor:
             # Submit tasks to the executor with all required arguments
-            futures = []
+            futures = set()
             for i in range(restarts):
+                if len(futures) >= self.args.cpus * 2:
+                        done, futures = concurrent.futures.wait(futures, return_when=concurrent.futures.FIRST_COMPLETED)
+                        for f in done:
+                            try:
+                                best_cost, selected_options = future.result()
+                                if best_cost < best_levin_loss_total:
+                                    best_levin_loss_total = best_cost
+                                    best_selected_options = selected_options
+                                completed += 1
+                                self.logger.info(f"Restart {completed} of {restarts}")
+                            except Exception as exc:
+                                self.logger.error(f'Exception: {exc}')
                 future = executor.submit(
                     self._search_options_subset, max_num_options, all_options, chained_trajectory, joint_problem_name_list, max_steps)
-                futures.append(future)
-
-            completed = 0
+                futures.add(future)
+            
             # Process the results as they complete
             for future in concurrent.futures.as_completed(futures):
                 try:
@@ -1102,7 +1113,7 @@ class LearnOptions:
                     completed += 1
                     self.logger.info(f"Restart {completed} of {restarts}")
                 except Exception as exc:
-                    self.logger.error(f'Segment:{future.s} of length {future.length} with primary_problem={future.primary_problem} generated an exception: {exc}')
+                    self.logger.error(f'Exception: {exc}')
 
         self.levin_loss.remove_cache()
         return list(best_selected_options)
