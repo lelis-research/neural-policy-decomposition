@@ -375,7 +375,7 @@ class PPOAgent(nn.Module):
         current_length = 0
         self.actor.requires_grad = False
 
-        o, _ = env.reset()
+        o = env.get_observation()
         
         done = False
 

@@ -26,7 +26,8 @@ from utils.utils import timing_decorator
 
 @dataclass
 class Args:
-    exp_name: str = "extract_learnOption_maxlength3"
+    exp_name: str = "extract_learnOption"
+    # exp_name: str = "debug"
     # exp_name: str = "extract_decOptionWhole_sparseInit"
     # exp_name: str = "extract_learnOptions_randomInit_discreteMasks"
     # exp_name: str = "extract_learnOptions_randomInit_pitisFunction"
@@ -94,13 +95,14 @@ class Args:
     """It's one of these: [internal, input, both]"""
     mask_transform_type: str = "softmax"
     """It's either `softmax` or `quantize`"""
+    selection_type: str = "local_search"
 
     # Script arguments
     seed: int = 0
     """The seed used for reproducibilty of the script"""
     torch_deterministic: bool = True
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
-    track: bool = True
+    track: bool = False
     """if toggled, this experiment will be tracked with Weights and Biases"""
     wandb_project_name: str = "BASELINE0_Combogrid"
     """the wandb's project name"""
@@ -137,6 +139,12 @@ def process_args() -> Args:
         args.exp_id = f'{args.exp_name}_{args.env_id}' + \
         f'_gw{args.game_width}_h{args.hidden_size}_l1{args.l1_lambda}' + \
         f'_r{args.number_restarts}_envsd{",".join(map(str, args.env_seeds))}'
+        if 'mask_type' in vars(args):
+            args.exp_id += f'_mskType{args.mask_type}'
+        if 'mask_transform_type' in vars(args):
+            args.exp_id += f'_mskTransform{args.mask_transform_type}'
+        if 'selection_type' in vars(args):
+            args.exp_id += f'_selectType{args.selection_type}'
 
     # updating log path
     args.log_path = os.path.join(args.log_path, args.exp_id, f"seed={str(args.seed)}")
@@ -829,10 +837,11 @@ class STEQuantize(torch.autograd.Function):
 
 
 class LearnOptions:
-    def __init__(self, args: Args, logger: logging.Logger, mask_type: str = "internal", mask_transform_type: str = "softmax"):
+    def __init__(self, args: Args, logger: logging.Logger, mask_type: str = "internal", mask_transform_type: str = "softmax", selection_type="local_search"):
         """
         `mask_type` can be either "internal", "input", or "both"
         `mask_transform_type` can be either "softmax" or "quantize"
+        `selection_type` can be either "greedy" or "local_search"
         """
         
         self.args = args
@@ -842,6 +851,8 @@ class LearnOptions:
         self.mask_type = mask_type
         self.levin_loss = LevinLossActorCritic(self.logger, self.mask_type, self.mask_transform_type)
         self.number_actions = 3
+
+        self.selection_type = selection_type
 
     def _get_transform_func(self):
         if self.mask_transform_type == "softmax":
@@ -891,24 +902,10 @@ class LearnOptions:
                 # Submit tasks to the executor with all required arguments
                 futures = []
                 for length in range(2, t_length + 1):
-<<<<<<< HEAD
-                    # if length > 3: # TODO: experimental, change in the future
-                    #     break
-                    for s in range(t_length - length + 1):
-                            for primary_problem, (primary_seed, primary_model_path, parimary_agent) in mimicing_agents.items():
-                                future = executor.submit(
-                                    self._train_mask_iter, trajectories, target_problem, s, length, parimary_agent)
-                                future.s = s,
-                                future.length = length
-                                future.primary_problem = primary_problem
-                                future.primary_env_seed = primary_seed
-                                future.primary_model_path = primary_model_path
-                                futures.append(future)
-=======
-                    # if length != 3: # TODO: experimental; remove later
+                    # if length != 3:
                     #     continue
-                    for s in range(t_length - length):
-                        actions = trajectories[target_problem].slice(s, n=length).get_action_sequence()
+                    for s in range(0, t_length - length + 1, 3):
+                        # actions = trajectories[target_problem].slice(s, n=length).get_action_sequence()
                         # if actions not in [[0,0,1], [2,1,0],[1,0,2], [0,1,2]]:
                         #     continue
                         for primary_problem, (primary_seed, primary_model_path, parimary_agent) in mimicing_agents.items():
@@ -920,7 +917,6 @@ class LearnOptions:
                             future.primary_env_seed = primary_seed
                             future.primary_model_path = primary_model_path
                             futures.append(future)
->>>>>>> c477ae5d9d5b1794284b6bfe7cf106d71933cd9c
 
                 # Process the results as they complete
                 for future in concurrent.futures.as_completed(futures):
@@ -940,6 +936,32 @@ class LearnOptions:
             utils.logger_flush(self.logger)
         self.logger.debug("\n")
 
+        if self.selection_type == "greedy":
+            selected_options = self.select_greedy(option_candidates, trajectories)
+        elif self.selection_type == "local_search":
+            selected_options = self.select_by_local_search(option_candidates, trajectories)
+        else:
+            raise ValueError(f"Invalid selection type: {self.selection_type}")
+
+        # printing selected options
+        self.logger.info("Selected options:")
+        for i in range(len(selected_options)):
+            self.logger.info(f"Option #{i}:\n" + 
+                        f"mask={selected_options[i].mask}\n" +
+                        f"size={selected_options[i].option_size}\n" +
+                        f"problem={selected_options[i].problem_id}")
+
+        save_options(options=selected_options, 
+                    trajectories=trajectories,
+                    args=self.args, 
+                    logger=self.logger)
+
+        utils.logger_flush(self.logger)
+
+        self.levin_loss.print_output_subpolicy_trajectory(selected_options, trajectories, logger=self.logger)
+        utils.logger_flush(self.logger)
+
+    def select_greedy(self, option_candidates, trajectories):
         selected_masks = []
         selected_option_sizes = []
         selected_options = []
@@ -963,7 +985,7 @@ class LearnOptions:
 
                 loss_value = self.levin_loss.compute_loss(masks=selected_masks + [mask], 
                                             agents=selected_options + [agent], 
-                                            problem_str=primary_problem, 
+                                            problem_str="", 
                                             trajectories=trajectories, 
                                             number_actions=self.number_actions, 
                                             number_steps=selected_option_sizes + [option_size])
@@ -971,7 +993,8 @@ class LearnOptions:
                 if best_loss is None or loss_value < best_loss:
                     best_loss = loss_value
                     best_mask_model = agent
-                    agent.to_option(mask, option_size, primary_problem)
+                    agent.to_option(mask, option_size, target_problem)
+                    agent.extra_info['primary_problem'] = primary_problem
                     agent.extra_info['primary_env_seed'] = primary_env_seed
                     agent.extra_info['target_problem'] = target_problem
                     agent.extra_info['target_env_seed'] = target_env_seed
@@ -992,24 +1015,98 @@ class LearnOptions:
         # remove the last automaton added
         num_options = len(selected_options)
         selected_options = selected_options[:num_options - 1]
+        return selected_options
 
-        # printing selected options
-        self.logger.info("Selected options:")
-        for i in range(len(selected_options)):
-            self.logger.info(f"Option #{i}:\n" + 
-                        f"mask={selected_options[i].mask}\n" +
-                        f"size={selected_options[i].option_size}\n" +
-                        f"problem={selected_options[i].problem_id}")
+    def _search_options_subset(self, max_num_options, all_options, chained_trajectory, joint_problem_name_list, max_steps):
+        max_num_options = min(max_num_options, len(all_options))
+        subset_length = random.choices(range(max_num_options + 1), weights=[1/(i+2) for i in range(max_num_options + 1)], k=1)[0]
+        selected_options = set(random.sample(all_options, k=subset_length))
+        best_cost = self.levin_loss.compute_loss_cached(list(selected_options), chained_trajectory, joint_problem_name_list, "", self.number_actions)
+        previous_cost = float('Inf')
+        steps = 0
+        while (best_cost < previous_cost or steps == 0) and steps < max_steps:
+            previous_cost = best_cost
+            neighbours = []
+            for option in all_options:
+                if option not in selected_options:
+                    if len(selected_options) < max_num_options:
+                        neighbour = selected_options | {option}
+                        neighbours.append(neighbour)
+                    for option2 in selected_options:
+                        neighbour2 = selected_options - {option2} | {option}
+                        neighbours.append(neighbour2)
+                else:
+                    neighbour = selected_options - {option}
+                    neighbours.append(neighbour)
+            for neighbour in neighbours:
+                cost = self.levin_loss.compute_loss_cached(list(neighbour), chained_trajectory, joint_problem_name_list, "", self.number_actions)
+                if cost < best_cost:
+                    selected_options = neighbour
+                    best_cost = cost
+            steps += 1
+        
+        return best_cost, selected_options
 
-        save_options(options=selected_options, 
-                    trajectories=trajectories,
-                    args=self.args, 
-                    logger=self.logger)
+    def select_by_local_search(self, option_candidates, trajectories):
+        all_options = []
 
-        utils.logger_flush(self.logger)
+        for mask, primary_problem, target_problem, primary_env_seed, target_env_seed, option_size, model_path, segment in option_candidates:
+            self.logger.info(f'Evaluating the option trained on the segment {({segment[0]},{segment[0]+option_size})} from problem={target_problem}, env_seed={target_env_seed}, primary_problem={primary_problem}')
+            env = get_single_environment(self.args, seed=primary_env_seed)
+            agent = PPOAgent(env, hidden_size=self.args.hidden_size)
+            agent.load_state_dict(torch.load(model_path))
+            agent.to_option(mask, option_size, target_problem)
+            agent.extra_info['primary_problem'] = primary_problem
+            agent.extra_info['primary_env_seed'] = primary_env_seed
+            agent.extra_info['target_problem'] = target_problem
+            agent.extra_info['target_env_seed'] = target_env_seed
+            agent.extra_info['segment'] = segment
+            all_options.append(agent)
 
-        self.levin_loss.print_output_subpolicy_trajectory(selected_options, trajectories, logger=self.logger)
-        utils.logger_flush(self.logger)
+        print("Number of option_candidates", len(all_options))
+        # return 
+
+        chained_trajectory = None
+        joint_problem_name_list = []
+        for problem, trajectory in trajectories.items():
+
+            if chained_trajectory is None:
+                chained_trajectory = copy.deepcopy(trajectory)
+            else:
+                chained_trajectory.concat(trajectory)
+            name_list = [problem for _ in range(len(trajectory._sequence))]
+            joint_problem_name_list = joint_problem_name_list + name_list
+
+        restarts = 1000
+        max_steps = 1000
+        max_num_options = 10
+        best_selected_options = []
+        best_levin_loss_total = float('Inf')
+
+        with concurrent.futures.ProcessPoolExecutor(max_workers=self.args.cpus) as executor:
+            # Submit tasks to the executor with all required arguments
+            futures = []
+            for i in range(restarts):
+                future = executor.submit(
+                    self._search_options_subset, max_num_options, all_options, chained_trajectory, joint_problem_name_list, max_steps)
+                futures.append(future)
+
+            completed = 0
+            # Process the results as they complete
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    best_cost, selected_options = future.result()
+                    if best_cost < best_levin_loss_total:
+                        best_levin_loss_total = best_cost
+                        best_selected_options = selected_options
+                    completed += 1
+                    self.logger.info(f"Restart {completed} of {restarts}")
+                except Exception as exc:
+                    self.logger.error(f'Segment:{future.s} of length {future.length} with primary_problem={future.primary_problem} generated an exception: {exc}')
+
+        self.levin_loss.remove_cache()
+        return list(best_selected_options)
+
 
     def _train_mask_iter(self, trajectories, problem, s, length, agent: PPOAgent):
         sub_trajectory = {problem: trajectories[problem].slice(s, n=length)}
@@ -1332,11 +1429,10 @@ def main():
 
     logger.info(f'mask_type="{args.mask_type}", mask_transform_type="{args.mask_transform_type}"')
 
-<<<<<<< HEAD
-    module_extractor = LearnOptions(args, logger, mask_type=args.mask_type, mask_transform_type=args.mask_transform_type)
-=======
-    module_extractor = LearnOptions(args, logger, mask_type="input", mask_transform_type="softmax")
->>>>>>> c477ae5d9d5b1794284b6bfe7cf106d71933cd9c
+    module_extractor = LearnOptions(args, logger, 
+                                    mask_type=args.mask_type, 
+                                    mask_transform_type=args.mask_transform_type, 
+                                    selection_type=args.selection_type)
     module_extractor.discover()
 
     # evaluate_all_masks_levin_loss(args, logger)
